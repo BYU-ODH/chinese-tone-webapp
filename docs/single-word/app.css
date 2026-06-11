@@ -1,0 +1,269 @@
+:root {
+  --t1: #e23636;
+  --t2: #f59e0b;
+  --t3: #16a34a;
+  --t4: #2563eb;
+  --bg: #f8fafc;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --good: #16a34a;
+  --close: #f59e0b;
+  --bad: #ef4444;
+  --uncertain: #94a3b8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--fg);
+  color: white;
+}
+
+header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+
+.engine-status {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+}
+.engine-status.loading::before { content: "● "; color: #f59e0b; }
+.engine-status.ready::before { content: "● "; color: #22c55e; }
+.engine-status.error::before { content: "● "; color: #ef4444; }
+
+main {
+  max-width: 720px;
+  margin: 1rem auto;
+  padding: 0 1rem 4rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.hidden { display: none !important; }
+
+/* ---- word display ---- */
+
+.word-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.word-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.hanzi {
+  font-size: 4.5rem;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.pinyin {
+  font-size: 1.4rem;
+  margin-top: 0.4rem;
+  font-feature-settings: "liga" off;
+}
+
+.pinyin.t1 { color: var(--t1); }
+.pinyin.t2 { color: var(--t2); }
+.pinyin.t3 { color: var(--t3); }
+.pinyin.t4 { color: var(--t4); }
+
+.gloss {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin-top: 0.2rem;
+}
+
+.nav-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+.nav-btn:hover { background: white; color: var(--fg); }
+
+/* ---- canvas ---- */
+
+.canvas-wrap {
+  position: relative;
+  width: 100%;
+  margin: 0.5rem 0 1rem;
+  background: #fafbfc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 8 / 3;
+}
+#contour-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---- controls ---- */
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.record-btn {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem 1.25rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  background: var(--fg);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  min-height: 56px;
+}
+.record-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.record-btn.recording { background: var(--bad); }
+
+.record-btn .dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: #ef4444;
+  display: inline-block;
+}
+.record-btn.recording .dot {
+  animation: pulse 0.9s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.25); }
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.ghost-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ghost-btn:hover:not(:disabled) { background: var(--bg); }
+
+/* ---- mic meter ---- */
+
+.mic-meter {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  margin-top: 0.75rem;
+  overflow: hidden;
+}
+.mic-meter > div {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(to right, #22c55e, #f59e0b, #ef4444);
+  transition: width 60ms linear;
+}
+
+/* ---- feedback ---- */
+
+.feedback {
+  margin-top: 1rem;
+  min-height: 2.4rem;
+}
+
+.feedback .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: white;
+}
+.feedback .badge.good { background: var(--good); }
+.feedback .badge.close { background: var(--close); }
+.feedback .badge.bad { background: var(--bad); }
+.feedback .badge.uncertain { background: var(--uncertain); }
+
+.feedback .diagnostic {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.feedback .detected {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* ---- calibration ---- */
+
+.calibration p {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--muted);
+}
+.calibration .pinyin { display: inline; font-size: inherit; }
+
+/* ---- error panel ---- */
+
+.error-panel {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+@media (max-width: 480px) {
+  .hanzi { font-size: 3.5rem; }
+  .pinyin { font-size: 1.2rem; }
+}

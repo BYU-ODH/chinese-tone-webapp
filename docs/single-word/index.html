@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<title>Chinese Tone Trainer — single word</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header>
+  <h1>Tone Trainer</h1>
+  <div id="engine-status" class="engine-status loading">Loading analyzer…</div>
+</header>
+
+<main>
+
+  <section id="practice" class="card practice hidden">
+    <div class="word-row">
+      <button id="prev-word" class="nav-btn" type="button" aria-label="Previous word">‹</button>
+      <div class="word-display" id="word-display">
+        <span class="hanzi" id="word-hanzi">妈</span>
+        <span class="pinyin" id="word-pinyin">mā</span>
+        <span class="gloss" id="word-gloss">mother</span>
+      </div>
+      <button id="next-word" class="nav-btn" type="button" aria-label="Next word">›</button>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="contour-canvas" width="640" height="240" aria-label="Pitch contour"></canvas>
+    </div>
+
+    <div class="controls">
+      <button id="record-btn" class="record-btn" disabled>
+        <span class="dot"></span>
+        <span class="label">Hold to record</span>
+      </button>
+      <button id="play-btn" class="ghost-btn" type="button" disabled>Play your voice</button>
+    </div>
+
+    <div id="mic-meter" class="mic-meter" aria-hidden="true"><div></div></div>
+
+    <div id="feedback" class="feedback" aria-live="polite"></div>
+  </section>
+
+  <section id="error-panel" class="card error-panel hidden" aria-live="polite">
+    <h2>Something went wrong</h2>
+    <p id="error-message"></p>
+  </section>
+
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
