@@ -224,13 +224,23 @@ const MIN_VOICED_DURATION_SEC = 0.10;
 const MIN_HNR_FOR_SCORING = 3;       // dB, very lenient — full silence/noise sits below this
 const MAX_BRIDGE_GAP_SEC = 0.10;     // bridge tracker dropouts up to 100 ms
 
+// Intensity drop that bounds the vowel nucleus. Deliberately generous: on real
+// speech much of the tone's F0 movement lives in the lower-intensity sonorant
+// onset/offset glides, so a tight gate (6 dB) discards tone-bearing frames and
+// hurts classification. 15 dB keeps the glides while still excluding near-silent
+// edges and inter-syllable dips. (Tuned on old/backend/sounds — see test_realaudio.mjs.)
+const VOWEL_CORE_DROP_DB = 15;
+const VOWEL_CORE_HNR_DROP = 8;     // dB below the loud-frame median HNR marking a consonant edge
+const VOWEL_CORE_ERODE_CAP = 0.4;  // max fraction of the span HNR erosion may trim
+const MIN_CORE_FRAMES = 6;         // floor so the order-3 Legendre fit stays well-posed
+
 /**
  * Extract features from a Praat analysis. Always returns a struct, but
  * .voiced=false signals the analysis was unreliable (caller should not
  * score it; UI should say "couldn't hear that").
  */
 export function extractFeatures (analysis, normalizer) {
-  const { pitch, intensity, hnrMean, jitter, duration } = analysis;
+  const { pitch, intensity, harmonicity, hnrMean, jitter, duration } = analysis;
   const N = pitch.n;
   const t0 = pitch.x1;
   const dx = pitch.dx;
@@ -280,18 +290,23 @@ export function extractFeatures (analysis, normalizer) {
     };
   }
 
-  // Build packed voiced contour, per-sample times, and per-frame intensity
-  // (linearly interpolated from the intensity contour). The intensity per
-  // voiced frame lets us gate which frames feed the speaker reference.
+  // Build packed voiced contour, per-sample times, and per-frame intensity +
+  // harmonicity (linearly interpolated from their contours). Intensity gates
+  // which frames feed the speaker reference; intensity + HNR together isolate
+  // the vowel nucleus from voiced consonants. The harmonicity block may be
+  // absent on older/synthetic input — sampleBlockAt returns NaN there, which
+  // makes the HNR veto inert and falls back to an intensity-only core.
   const voicedHz = [];
   const voicedTimes = [];
   const voicedDb = [];
+  const voicedHnr = [];
   for (let i = firstV; i <= lastV; i++) {
     if (Number.isFinite(hz[i]) && hz[i] > 0) {
       const t = t0 + i * dx;
       voicedHz.push(hz[i]);
       voicedTimes.push(t);
-      voicedDb.push(intensityAt(intensity, t));
+      voicedDb.push(sampleBlockAt(intensity, t));
+      voicedHnr.push(sampleBlockAt(harmonicity, t));
     }
   }
   const voicedDur = voicedTimes[voicedTimes.length - 1] - voicedTimes[0];
@@ -306,20 +321,31 @@ export function extractFeatures (analysis, normalizer) {
     };
   }
 
-  // Median Hz, used as fallback when no calibration reference exists.
+  // Median Hz, used as fallback when no calibration reference exists. Computed
+  // over the full voiced span so the median fallback and display contour reflect
+  // everything that was heard, not just the nucleus.
   const sorted = [...voicedHz].sort((a, b) => a - b);
   const medianHz = sorted[sorted.length >> 1];
 
-  // Normalize to semitones re speaker mean (or median fallback).
-  const semitones = normalizer.semitonesRe(voicedHz, medianHz);
+  // Isolate the vowel nucleus: the loudest contiguous span (the sonority peak),
+  // with low-periodicity edge frames vetoed by HNR. Voiced consonants (nasals,
+  // /l/, /r/, voiced fricatives) carry F0 but sit on lower-intensity, lower-HNR
+  // shoulders; restricting the fit to the core keeps them out of the tone shape.
+  const core = findVowelCore(voicedDb, voicedHnr);
+  const coreHz = voicedHz.slice(core.start, core.end);
+  const coreTimes = voicedTimes.slice(core.start, core.end);
+
+  // Normalize to semitones re speaker mean (or median fallback). Fit is over the
+  // nucleus only; medianHz still comes from the full span (above).
+  const coreSemitones = normalizer.semitonesRe(coreHz, medianHz);
 
   // Smooth lightly with a 3-point moving average to reduce per-frame jitter
   // before fitting. Median-of-3 would be more robust but harder to vectorize;
   // mean-of-3 is fine for the polynomial projection.
-  const smoothed = movingAverage(semitones, 3);
+  const smoothed = movingAverage(coreSemitones, 3);
 
-  // Fit Legendre polynomials.
-  const coefs = legendreFit(voicedTimes, smoothed, 3);
+  // Fit Legendre polynomials over the vowel nucleus.
+  const coefs = legendreFit(coreTimes, smoothed, 3);
 
   // Safety valve: a trusted reference can still be wrong for this
   // utterance (octave-tracking error, or the reference itself is off).
@@ -328,7 +354,8 @@ export function extractFeatures (analysis, normalizer) {
   let registerTrusted = normalizer.isRegisterTrusted();
   if (registerTrusted && Math.abs(coefs[0]) > 12) registerTrusted = false;
 
-  // Onset / offset (first / last 10% of voiced span).
+  // Onset / offset: first / last 15% of the vowel nucleus (smoothed is the core
+  // subset), so onset reflects where the vowel begins, not a prevocalic nasal.
   const onsetSlice = sliceFraction(smoothed, 0, 0.15);
   const offsetSlice = sliceFraction(smoothed, 0.85, 1);
   const onset = mean(onsetSlice);
@@ -368,6 +395,7 @@ export function extractFeatures (analysis, normalizer) {
     voiced: true,
     registerTrusted,
     voicedFrameCount: voicedCount,
+    vowelCoreFrames: core.end - core.start,
     voicedDuration: voicedDur,
     duration,
     medianHz,
@@ -420,9 +448,13 @@ function filterReferenceFrames (hz, db) {
   return out;
 }
 
-/** Linear interpolation of an Intensity sampled block at time t. */
-function intensityAt (intensity, t) {
-  const { n, dx, x1, values } = intensity;
+/**
+ * Linear interpolation of a Praat sampled block ({n,dx,x1,values}) at time t.
+ * Returns NaN for a missing/empty block so callers degrade gracefully.
+ */
+function sampleBlockAt (blk, t) {
+  if (!blk) return NaN;
+  const { n, dx, x1, values } = blk;
   if (n <= 0 || !(dx > 0)) return NaN;
   const idx = (t - x1) / dx;
   if (idx <= 0) return values[0];
@@ -434,6 +466,80 @@ function intensityAt (intensity, t) {
   if (!Number.isFinite(a)) return Number.isFinite(b) ? b : NaN;
   if (!Number.isFinite(b)) return a;
   return a * (1 - f) + b * f;
+}
+
+/**
+ * Isolate the vowel nucleus from a voiced span by sonority. Returns
+ * {start, end} (inclusive/exclusive) indices into the voiced arrays.
+ *
+ * Two stages, both robust to the noise in real recordings:
+ *
+ *   1. Intensity span. The vowel is the syllable's loudness peak; we grow a
+ *      contiguous span out from that peak while intensity stays within
+ *      VOWEL_CORE_DROP_DB of it. The drop is generous (15 dB) on purpose: a
+ *      tight gate also discards the lower-intensity sonorant glides where much
+ *      of the tone's F0 movement lives, which badly hurts classification on
+ *      real speech. 15 dB keeps the glides while excluding near-silent edges.
+ *
+ *   2. HNR edge-erosion. Voiced consonants (onset/coda nasals, /l/, /r/, voiced
+ *      fricatives) are less periodic than the vowel, so they show a lower HNR.
+ *      We erode contiguous low-HNR runs inward from each END only — never from
+ *      the interior — referenced to the MEDIAN HNR of the loud frames (a single
+ *      ~99 dB clamp spike must not move the reference) and capped at
+ *      VOWEL_CORE_ERODE_CAP of the span so noisy HNR can never eat the vowel.
+ *      Eroding only the ends is what makes this safe: interior HNR dips (common
+ *      in real speech) are ignored.
+ *
+ * Gating on intensity rather than F0 means T3 is correct by construction: the
+ * F0 dips low but the vowel stays loud, so the whole dip is kept.
+ */
+function findVowelCore (voicedDb, voicedHnr) {
+  const N = voicedDb.length;
+  if (N <= MIN_CORE_FRAMES) return { start: 0, end: N };
+
+  // Peak intensity = the vowel center.
+  let peakDb = -Infinity;
+  let peakIdx = 0;
+  for (let i = 0; i < N; i++) {
+    if (Number.isFinite(voicedDb[i]) && voicedDb[i] > peakDb) {
+      peakDb = voicedDb[i];
+      peakIdx = i;
+    }
+  }
+  const dbCutoff = peakDb - VOWEL_CORE_DROP_DB;
+  // Non-finite intensity counts as loud, so an interpolation gap never truncates
+  // the contiguous span.
+  const isLoud = (i) => !Number.isFinite(voicedDb[i]) || voicedDb[i] >= dbCutoff;
+
+  // Stage 1: grow the contiguous loud span around the peak.
+  let start = peakIdx;
+  let end = peakIdx + 1;        // exclusive
+  while (start > 0 && isLoud(start - 1)) start--;
+  while (end < N && isLoud(end)) end++;
+
+  // Stage 2: erode low-HNR consonant runs inward from each end.
+  const loudHnr = [];
+  for (let i = start; i < end; i++) {
+    if (Number.isFinite(voicedHnr[i])) loudHnr.push(voicedHnr[i]);
+  }
+  loudHnr.sort((a, b) => a - b);
+  const medianHnr = loudHnr.length ? loudHnr[loudHnr.length >> 1] : NaN;
+  const hnrCutoff = Number.isFinite(medianHnr) ? medianHnr - VOWEL_CORE_HNR_DROP : -Infinity;
+  const hnrLow = (i) => Number.isFinite(voicedHnr[i]) && voicedHnr[i] < hnrCutoff;
+
+  const maxErode = Math.floor((end - start) * VOWEL_CORE_ERODE_CAP);
+  let eroded = 0;
+  while (end - start > MIN_CORE_FRAMES && eroded < maxErode && hnrLow(start)) { start++; eroded++; }
+  while (end - start > MIN_CORE_FRAMES && eroded < maxErode && hnrLow(end - 1)) { end--; eroded++; }
+
+  // Floor the core size so the order-3 fit stays well-posed, widening
+  // symmetrically around the peak until we reach MIN_CORE_FRAMES or the bounds.
+  while (end - start < MIN_CORE_FRAMES && (start > 0 || end < N)) {
+    if (start > 0) start--;
+    if (end - start < MIN_CORE_FRAMES && end < N) end++;
+  }
+
+  return { start, end };
 }
 
 /* ------------------------------------------------------------------ */

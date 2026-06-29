@@ -21,22 +21,34 @@ import { classify } from './docs/single-word/classifier.js';
 
 const DX = 0.005;   // matches the Praat script's 5 ms time step
 
-/** Build an analysis struct for a 0.4 s utterance with F0 = f0fn(u), u in 0..1. */
-function makeAnalysis (f0fn, dur = 0.4) {
+/**
+ * Build an analysis struct for a `dur` s utterance with F0 = f0fn(u), u in 0..1.
+ * Optional dbFn(u)/hnrFn(u) shape the intensity and harmonicity contours; by
+ * default both are flat (a single loud, periodic vowel), so the vowel-core
+ * selection keeps the whole span and these tests stay focused on the
+ * normalizer's drift behavior rather than on core trimming.
+ */
+function makeAnalysis (f0fn, dur = 0.4, dbFn = () => 70, hnrFn = () => 15) {
   const n = Math.round(dur / DX);
   const pv = [];
   const iv = [];
+  const hv = [];
   for (let i = 0; i < n; i++) {
     const u = i / (n - 1);
     pv.push(f0fn(u));
-    // Loud core with a soft tail-off over the last 20%, like real speech.
-    iv.push(70 - 25 * Math.max(0, (u - 0.8) / 0.2));
+    iv.push(dbFn(u));
+    hv.push(hnrFn(u));
   }
+  const hnrFinite = hv.filter(Number.isFinite);
+  const hnrMean = hnrFinite.length
+    ? hnrFinite.reduce((a, b) => a + b, 0) / hnrFinite.length
+    : -99;
   return {
     duration: dur,
     pitch: { n, dx: DX, x1: DX / 2, values: pv },
     intensity: { n, dx: DX, x1: DX / 2, values: iv },
-    hnrMean: 15,
+    harmonicity: { n, dx: DX, x1: DX / 2, values: hv },
+    hnrMean,
     jitter: 0.01
   };
 }
@@ -168,6 +180,41 @@ console.log('\n--- 5. Safety valve: implausible c0 falls back to shape-only ---'
   const high = extractFeatures(makeAnalysis((u) => st(18)), norm);
   check(high.voiced && high.registerTrusted === false,
     `octave-error utterance scored shape-only (c0=${high.coefs[0].toFixed(1)} ST)`);
+}
+
+console.log('\n--- 6. Voiced-consonant onset must not contaminate the vowel ---');
+{
+  // A nasal-initial syllable like "mā": a ~150 ms voiced nasal onset whose F0
+  // ramps up from low into the vowel, then a steady high-flat T1 vowel. The
+  // nasal is quieter (58 dB vs 70) and less periodic (HNR 3 vs 15) than the
+  // vowel — exactly the cues the vowel-core selector uses to exclude it.
+  const NASAL_END = 0.30;                 // u where the vowel begins
+  const vowelF0 = (u) => st(5);           // T1: high-flat (≈+5 ST re mean)
+  const f0fn = (u) => (u < NASAL_END
+    ? st(-8 + 13 * (u / NASAL_END))       // nasal: rises from low into the vowel
+    : vowelF0(u));
+  const dbFn = (u) => (u < NASAL_END ? 58 : 70);
+  const hnrFn = (u) => (u < NASAL_END ? 3 : 15);
+
+  const norm = new SpeakerNormalizer();
+  const features = extractFeatures(makeAnalysis(f0fn, 0.5, dbFn, hnrFn), norm);
+
+  // Contaminated baseline: identical F0 but flat intensity/HNR, so the nasal is
+  // indistinguishable and gets folded into the fit.
+  const contaminated = extractFeatures(makeAnalysis(f0fn, 0.5), norm);
+
+  check(features.voiced && features.vowelCoreFrames < features.voicedFrameCount,
+    `nasal onset excluded from core ` +
+    `(core ${features.vowelCoreFrames}/${features.voicedFrameCount} frames)`);
+  check(Math.abs(features.coefs[1]) < 1.5,
+    `vowel c1 flat once nasal removed: |${features.coefs[1].toFixed(2)}| < 1.5 ` +
+    `(contaminated c1=${contaminated.coefs[1].toFixed(2)})`);
+  check(Math.abs(features.coefs[1]) < Math.abs(contaminated.coefs[1]) - 1,
+    `core fit is flatter than the contaminated fit ` +
+    `(${features.coefs[1].toFixed(2)} vs ${contaminated.coefs[1].toFixed(2)})`);
+  check(classify(1, features).bestTone === 1,
+    `nasal-initial T1 still classifies as T1 ` +
+    `(got T${classify(1, features).bestTone})`);
 }
 
 /* ------------------------------------------------------------------ */
