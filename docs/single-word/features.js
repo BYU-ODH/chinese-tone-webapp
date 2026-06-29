@@ -12,65 +12,125 @@
  * features (c0, onset, offset).
  */
 
-/** Running speaker reference accumulator (log2-Hz mean over voiced frames). */
+/* Histogram domain for accumulated log2-F0: 60–700 Hz at half-semitone
+ * resolution. Praat's tracker is configured for 75–600 Hz, so everything
+ * it can emit lands inside this range. */
+const HIST_LO = Math.log2(60);
+const HIST_HI = Math.log2(700);
+const HIST_BINS = 85;
+const HIST_W = (HIST_HI - HIST_LO) / HIST_BINS;
+
+/* Cap on how many frames a single utterance may contribute. Without a
+ * cap, one long recording dominates the reference. */
+const MAX_FRAMES_PER_UTTERANCE = 30;
+
+/* When the accumulated weight exceeds this, halve all bin counts. Bounds
+ * the memory of stale data so the reference can track slow register
+ * drift (warming up, moving relative to the mic). */
+const DECAY_AT_COUNT = 600;
+
+/**
+ * Running speaker register estimator.
+ *
+ * Accumulates voiced log2-F0 into a fixed-bin histogram and derives the
+ * reference from robust percentiles, NOT absolute min/max. Rationale: a
+ * single creaky T3 (Praat halving F0) or excited onset spike must not be
+ * able to shift the reference for the rest of the session — with
+ * percentiles its influence is proportional to its share of the data
+ * and washes out as good data accumulates.
+ */
 export class SpeakerNormalizer {
   constructor () {
-    this.logSum = 0;
-    this.count = 0;
-    this.minLogF0 = Infinity;
-    this.maxLogF0 = -Infinity;
-  }
-
-  /** Add voiced Hz values to the running estimate. NaN/<=0 are ignored. */
-  add (hzValues) {
-    for (const f of hzValues) {
-      if (Number.isFinite(f) && f > 0) {
-        const lg = Math.log2(f);
-        this.logSum += lg;
-        this.count += 1;
-        if (lg < this.minLogF0) this.minLogF0 = lg;
-        if (lg > this.maxLogF0) this.maxLogF0 = lg;
-      }
-    }
-  }
-
-  meanLogF0 () { return this.count > 0 ? this.logSum / this.count : null; }
-
-  meanHz () {
-    const m = this.meanLogF0();
-    return m == null ? null : Math.pow(2, m);
-  }
-
-  /** F0 range observed so far, in semitones. */
-  rangeSemitones () {
-    if (this.count === 0) return 0;
-    return 12 * (this.maxLogF0 - this.minLogF0);
+    this.bins = new Float64Array(HIST_BINS);
+    this.count = 0;             // total accumulated weight (frames)
+    this.utteranceCount = 0;    // utterances that contributed frames
+    this.tonesSeen = new Set(); // distinct target tones practiced
   }
 
   /**
-   * The speaker reference is "trusted" only after we've heard enough
-   * voiced data across a wide-enough F0 range that the running mean
-   * actually approximates the speaker's mid-register. Below this bar,
-   * the classifier should ignore register-dependent cues (c0, onset,
-   * offset) and rely on shape only.
+   * Add voiced Hz values from one utterance. NaN/<=0 are ignored, the
+   * contribution is subsampled to MAX_FRAMES_PER_UTTERANCE, and the
+   * practiced target tone (1..4, optional) feeds the trust gate.
+   */
+  add (hzValues, targetTone) {
+    const valid = [];
+    for (const f of hzValues) {
+      if (Number.isFinite(f) && f > 0) valid.push(f);
+    }
+    if (valid.length === 0) return;
+
+    const stride = Math.max(1, Math.ceil(valid.length / MAX_FRAMES_PER_UTTERANCE));
+    for (let i = 0; i < valid.length; i += stride) {
+      const lg = Math.log2(valid[i]);
+      let bin = Math.floor((lg - HIST_LO) / HIST_W);
+      if (bin < 0) bin = 0;
+      if (bin >= HIST_BINS) bin = HIST_BINS - 1;
+      this.bins[bin] += 1;
+      this.count += 1;
+    }
+    this.utteranceCount += 1;
+    if (targetTone >= 1 && targetTone <= 4) this.tonesSeen.add(targetTone);
+
+    if (this.count > DECAY_AT_COUNT) {
+      for (let i = 0; i < HIST_BINS; i++) this.bins[i] *= 0.5;
+      this.count *= 0.5;
+    }
+  }
+
+  /** Log2-Hz at percentile p (0..1), linearly interpolated within a bin. */
+  percentileLogF0 (p) {
+    if (this.count <= 0) return null;
+    const target = p * this.count;
+    let cum = 0;
+    for (let i = 0; i < HIST_BINS; i++) {
+      const c = this.bins[i];
+      if (cum + c >= target) {
+        const within = c > 0 ? (target - cum) / c : 0.5;
+        return HIST_LO + (i + within) * HIST_W;
+      }
+      cum += c;
+    }
+    return HIST_HI;
+  }
+
+  meanHz () {
+    const m = this.percentileLogF0(0.5);
+    return m == null ? null : Math.pow(2, m);
+  }
+
+  /** Robust F0 spread observed so far (P90 − P10), in semitones. */
+  rangeSemitones () {
+    if (this.count === 0) return 0;
+    return 12 * (this.percentileLogF0(0.9) - this.percentileLogF0(0.1));
+  }
+
+  /**
+   * The speaker reference is "trusted" only once it plausibly reflects
+   * the speaker's register rather than one drilled tone. Below this bar,
+   * the classifier ignores register-dependent cues (c0, onset, offset)
+   * and relies on shape only.
    *
-   * Heuristic: ≥60 voiced frames AND >5 semitones of observed range.
-   * 60 frames ≈ 0.3 s of voiced speech across 2–3 utterances; 5 ST
-   * comfortably exceeds the within-tone range of any single tone, so
-   * a passing speaker has produced varied tone shapes.
+   * Gate: ≥4 utterances AND ≥2 distinct practiced tones AND a robust
+   * spread (P90−P10) over 6 ST. The tone-diversity requirement matters
+   * because drilling one word — the normal use pattern — centers the
+   * estimate on that tone's own range, which would systematically punish
+   * correct productions (e.g., drilled T1 measures c0≈0 against a target
+   * of +5).
    */
   isRegisterTrusted () {
-    return this.count >= 60 && this.rangeSemitones() > 5;
+    return this.utteranceCount >= 4
+      && this.tonesSeen.size >= 2
+      && this.rangeSemitones() > 6;
   }
 
   /** Reference log2-Hz to use for normalization. */
   referenceLogF0 (fallbackHz) {
     if (this.isRegisterTrusted()) {
-      // Midpoint of observed range — robust to skewed tone distributions
-      // (e.g., kid did 3 T1s and 1 T3; mean would be biased high).
-      return (this.minLogF0 + this.maxLogF0) / 2;
+      // Midpoint of the robust spread — approximates mid-register
+      // without letting tail frames (creak, octave errors) move it.
+      return (this.percentileLogF0(0.1) + this.percentileLogF0(0.9)) / 2;
     }
-    if (this.count > 0) return this.meanLogF0();
+    if (this.count > 0) return this.percentileLogF0(0.5);
     return fallbackHz > 0 ? Math.log2(fallbackHz) : null;
   }
 
@@ -261,6 +321,13 @@ export function extractFeatures (analysis, normalizer) {
   // Fit Legendre polynomials.
   const coefs = legendreFit(voicedTimes, smoothed, 3);
 
+  // Safety valve: a trusted reference can still be wrong for this
+  // utterance (octave-tracking error, or the reference itself is off).
+  // No tone lives more than an octave from mid-register, so when |c0|
+  // is implausible, score this utterance shape-only rather than punish it.
+  let registerTrusted = normalizer.isRegisterTrusted();
+  if (registerTrusted && Math.abs(coefs[0]) > 12) registerTrusted = false;
+
   // Onset / offset (first / last 10% of voiced span).
   const onsetSlice = sliceFraction(smoothed, 0, 0.15);
   const offsetSlice = sliceFraction(smoothed, 0.85, 1);
@@ -299,7 +366,7 @@ export function extractFeatures (analysis, normalizer) {
 
   return {
     voiced: true,
-    registerTrusted: normalizer.isRegisterTrusted(),
+    registerTrusted,
     voicedFrameCount: voicedCount,
     voicedDuration: voicedDur,
     duration,

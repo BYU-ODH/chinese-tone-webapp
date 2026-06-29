@@ -250,6 +250,12 @@ function bindPracticeHandlers () {
         return;
       }
 
+      // Snapshot for playback BEFORE analysis: analyzeWav transfers the
+      // ArrayBuffer to the Praat worker, which detaches it on this thread
+      // — a Blob built afterwards would be empty.
+      state.lastWavBlob = new Blob([wav], { type: 'audio/wav' });
+      els.playBtn.disabled = false;
+
       els.feedback.innerHTML = '<span class="diagnostic">Listening…</span>';
 
       try {
@@ -266,20 +272,16 @@ function bindPracticeHandlers () {
             '<div class="diagnostic">' +
             (UNCERTAIN_REASON_TEXT[features.reason] || 'Try again.') +
             '</div>';
-          state.lastWavBlob = new Blob([wav], { type: 'audio/wav' });
-          els.playBtn.disabled = false;
           return;
         }
 
         // Update the running speaker reference with the filtered
         // subset of voiced frames (steady-state, loud, no octave errors).
-        state.normalizer.add(features.referenceFrames);
+        // The target tone feeds the trust gate's tone-diversity check.
+        state.normalizer.add(features.referenceFrames, word.tone);
 
         const verdict = classify(word.tone, features);
         showVerdict(verdict, word.tone);
-
-        state.lastWavBlob = new Blob([wav], { type: 'audio/wav' });
-        els.playBtn.disabled = false;
       } catch (err) {
         console.error(err);
         els.feedback.innerHTML =
@@ -295,9 +297,10 @@ function bindPracticeHandlers () {
     if (!state.lastWavBlob) return;
     const url = URL.createObjectURL(state.lastWavBlob);
     const audio = new Audio(url);
-    audio.play().finally(() => {
-      // Free the blob URL after playback completes.
-      audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+    audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+    audio.play().catch(err => {
+      URL.revokeObjectURL(url);
+      console.error('Playback failed:', err);
     });
   });
 }

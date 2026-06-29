@@ -17,9 +17,11 @@
  * final.
  *
  * Native target sketches (semitones re mean), derived from Xu (1997)-style
- * citation contours mapped onto Legendre-3 fits:
+ * citation contours mapped onto Legendre-3 fits. Note c1 of a linear
+ * glide is HALF the total excursion (L1 = t spans -1..+1), so a +6 ST
+ * T2 rise fits as c1 ≈ +3:
  *   T1 (high level)    c0≈+5,    c1≈0,     c2≈0
- *   T2 (mid rising)    c0≈+1,    c1≈+4,    c2≈+0.5
+ *   T2 (mid rising)    c0≈+1,    c1≈+3,    c2≈+0.5
  *   T3 (low dipping)   c0≈-3,    c1≈-1,    c2≈+3.5
  *   T4 (high falling)  c0≈+1,    c1≈-5,    c2≈0
  */
@@ -69,8 +71,9 @@ function scoreTones (f) {
   ]);
 
   // T2: rising. Shape: c1 positive. Register: c0 mid.
+  // Full credit at c1=3 (a +6 ST rise) — c1=4 would demand +8 ST.
   const t2 = weighted([
-    [rampUp(c1, 1, 4),       1.0],
+    [rampUp(c1, 0.5, 3),     1.0],
     [bell(c2, 0.5, 3),       0.3],     // mild concave-up tolerated
     [bell(c0, 1, 4),         0.6 * reg]
   ]);
