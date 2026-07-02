@@ -20,14 +20,49 @@
  *
  * For each tone, mean of contour over [0, 1] equals c0 (since the
  * non-c0 Legendre terms integrate to zero on [-1, +1]).
+ *
+ * BAND ↔ CLASSIFIER CONSISTENCY: the band a learner aims at must be a shape
+ * the classifier actually accepts as that tone — otherwise we'd show a target
+ * that gets marked wrong. `getSyllableTargets` validates every corpus-derived
+ * target against `classify()` (see `bandAcceptedAs`) and substitutes the
+ * canonical fallback whenever the corpus mean falls outside the classifier's
+ * acceptance region for its tone. The fallback shapes are themselves verified
+ * accepted (scripts/verify-targets.mjs, run by the test suite). Each target
+ * carries `offset` and `dur` because the classifier now keys on them (T3
+ * fall-recover, T4 shortness), not on the Legendre shape alone.
  */
 
+// Canonical citation-tone targets. offset = end height (c0+c1+c2+c3, semitones
+// re mean); dur = typical voiced-frame count (~5 ms/frame) from the corpus, so
+// the shape is validated against the classifier at a realistic duration.
+import { classify } from './classifier.js';
+
 const FALLBACK = {
-  1: { coefs: [5.0,  0.0,  0.0,  0.0]  },  // high level
-  2: { coefs: [1.0,  4.0,  0.5,  0.0]  },  // rising, slight late acceleration
-  3: { coefs: [-3.0, -1.0, 3.5,  0.3]  },  // low dip, asymmetric (later minimum)
-  4: { coefs: [1.0, -5.0, -0.3,  0.0]  }   // high fall, brief plateau before drop
+  1: { coefs: [5.0,  0.0,  0.0,  0.0], offset:  5.0, dur: 120 },  // high level
+  2: { coefs: [1.0,  4.0,  0.5,  0.0], offset:  5.5, dur: 140 },  // rising, slight late acceleration
+  3: { coefs: [-3.0, -1.0, 3.5,  0.3], offset: -0.2, dur: 160 },  // low dip, asymmetric (later minimum)
+  4: { coefs: [1.0, -5.0, -0.3,  0.0], offset: -4.3, dur:  90 }   // high fall, brief plateau before drop
 };
+
+export { FALLBACK };
+
+/**
+ * Would a learner who produced exactly this target contour be classified as
+ * `tone`? Runs the live classifier on a synthetic feature struct built from the
+ * target's shape + endpoint + duration. Required in BOTH register regimes
+ * (shape-only early session, and register-trusted later) so the band is a valid
+ * target regardless of how much the speaker reference has settled.
+ */
+export function bandAcceptedAs (tone, entry) {
+  const coefs = entry.coefs;
+  const offset = Number.isFinite(entry.offset)
+    ? entry.offset
+    : (coefs[0] + coefs[1] + coefs[2] + coefs[3]);   // value at t = +1
+  const dur = entry.dur || FALLBACK[tone].dur;
+  const feats = reg => ({ voiced: true, coefs, offset, voicedFrameCount: dur, registerTrusted: reg });
+  return classify(tone, feats(false)).bestTone === tone
+      && classify(tone, feats(true)).bestTone === tone;
+}
 
 let LOADED = null;
 
@@ -59,15 +94,27 @@ export function getSyllableTargets (syllable) {
   const out = {};
   for (let t = 1; t <= 4; t++) {
     const entry = tp && tp[t];
-    if (entry && Array.isArray(entry.coefs) && entry.coefs.length >= 4) {
+    const fb = FALLBACK[t];
+    const usable = entry && Array.isArray(entry.coefs) && entry.coefs.length >= 4;
+    // Use the corpus target only when the classifier actually accepts its shape
+    // as this tone; otherwise the learner would be aiming at a band that gets
+    // marked wrong, so fall back to the (verified) canonical shape.
+    if (usable && bandAcceptedAs(t, entry)) {
       out[t] = {
         coefs: entry.coefs.slice(0, 4),
+        offset: Number.isFinite(entry.offset) ? entry.offset : null,
+        dur: entry.dur || null,
         source: 'tone-perfect',
         n: entry.n || null,
         sd: Array.isArray(entry.sd) ? entry.sd.slice(0, 4) : null
       };
     } else {
-      out[t] = { coefs: FALLBACK[t].coefs.slice(), source: 'canonical-fallback' };
+      out[t] = {
+        coefs: fb.coefs.slice(),
+        offset: fb.offset,
+        dur: fb.dur,
+        source: usable ? 'canonical-fallback (corpus target off-model)' : 'canonical-fallback'
+      };
     }
   }
   return out;

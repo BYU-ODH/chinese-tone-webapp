@@ -29,12 +29,17 @@
  *     speakers: [...],
  *     syllables: {
  *       "ma": {
- *         "1": { coefs: [c0,c1,c2,c3], sd: [s0,s1,s2,s3], n: 6 },
+ *         "1": { coefs: [c0,c1,c2,c3], sd: [s0,s1,s2,s3], offset, dur, n: 6 },
  *         "2": { ... }, ...
  *       },
  *       ...
  *     }
  *   }
+ *
+ *   offset = mean end-height (semitones re speaker mean); dur = mean voiced-frame
+ *   count (~5 ms/frame). Both are carried because the classifier now keys on them
+ *   (T3 fall-recover, T4 shortness), so the target band can reflect the full
+ *   acceptance region, not just the Legendre shape.
  *
  * License note: Tone Perfect is distributed by Michigan State University
  * with terms restricting redistribution. This script writes only derived
@@ -51,10 +56,11 @@ import { join, dirname, resolve, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { extractFeatures, SpeakerNormalizer, legendreFit } from '../docs/single-word/features.js';
+import { buildAnalysisScript, parseAnalysisOutput } from '../docs/single-word/praat-analysis.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PRAAT_DIR = process.env.PRAAT_WASM_DIR
-  || resolve(__dirname, '../../praat.github.io/wasm');
+// Matches the sibling checkout used by the LOSO harness (corpus-eval.mjs).
+const PRAAT_DIR = process.env.PRAAT_WASM_DIR || '/Users/rob/repos/praat.github.io/wasm';
 
 /* ---------- CLI ---------- */
 
@@ -88,7 +94,8 @@ const files = walk(resolve(inputDir))
       path: p,
       syllable: m[1].toLowerCase(),
       tone: parseInt(m[2], 10),
-      speaker: m[3].toUpperCase()
+      speaker: m[3].toUpperCase(),
+      ext: m[4].toLowerCase()
     };
   })
   .filter(Boolean);
@@ -107,123 +114,10 @@ const { createPraatWasm } = await import(join(PRAAT_DIR, 'js/praat-wasm.mjs'));
 const praat = await createPraatWasm();
 console.error('praat-wasm ready.');
 
-function buildAnalysisScript (soundId) {
-  // Same script the live engine uses. Inlined because praat-engine.js is
-  // browser-only (relies on createPraatWorker / Blob URLs).
-  return `
-writeInfoLine: "BEGIN"
-selectObject: ${soundId}
-duration = Get total duration
-sr = Get sampling frequency
-appendInfoLine: "DURATION ", fixed$(duration, 6)
-appendInfoLine: "SAMPLERATE ", fixed$(sr, 1)
-selectObject: ${soundId}
-To Pitch (ac): 0.005, 75, 15, "no", 0.01, 0.30, 0.01, 0.35, 0.14, 600
-pitchId = selected("Pitch")
-nFrames = Get number of frames
-dx = Get time step
-x1 = Get time from frame number: 1
-appendInfoLine: "PITCH"
-appendInfoLine: "n ", nFrames
-appendInfoLine: "dx ", fixed$(dx, 6)
-appendInfoLine: "x1 ", fixed$(x1, 6)
-appendInfoLine: "values"
-for i to nFrames
-    f = Get value in frame: i, "Hertz"
-    if f = undefined
-        appendInfoLine: "u"
-    else
-        appendInfoLine: fixed$(f, 3)
-    endif
-endfor
-appendInfoLine: "endvalues"
-removeObject: pitchId
-selectObject: ${soundId}
-To Intensity: 75, 0.005, "yes"
-intensityId = selected("Intensity")
-nIntFrames = Get number of frames
-intDx = Get time step
-intX1 = Get time from frame number: 1
-appendInfoLine: "INTENSITY"
-appendInfoLine: "n ", nIntFrames
-appendInfoLine: "dx ", fixed$(intDx, 6)
-appendInfoLine: "x1 ", fixed$(intX1, 6)
-appendInfoLine: "values"
-for i to nIntFrames
-    v = Get value in frame: i
-    if v = undefined
-        appendInfoLine: "u"
-    else
-        appendInfoLine: fixed$(v, 3)
-    endif
-endfor
-appendInfoLine: "endvalues"
-removeObject: intensityId
-selectObject: ${soundId}
-To Harmonicity (cc): 0.01, 75, 0.1, 1.0
-hnrId = selected("Harmonicity")
-hnrMean = Get mean: 0, 0
-if hnrMean = undefined
-    appendInfoLine: "HNR_MEAN -99"
-else
-    appendInfoLine: "HNR_MEAN ", fixed$(hnrMean, 3)
-endif
-removeObject: hnrId
-selectObject: ${soundId}
-To PointProcess (periodic, cc): 75, 600
-ppId = selected("PointProcess")
-nPeriods = Get number of periods: 0, 0, 0.0001, 0.02, 1.3
-if nPeriods >= 2
-    jitter = Get jitter (local): 0, 0, 0.0001, 0.02, 1.3
-    if jitter = undefined
-        appendInfoLine: "JITTER -1"
-    else
-        appendInfoLine: "JITTER ", fixed$(jitter, 6)
-    endif
-else
-    appendInfoLine: "JITTER -1"
-endif
-removeObject: ppId
-appendInfoLine: "END"
-`;
-}
-
-function parseAnalysisOutput (text) {
-  const lines = text.split('\n').map(l => l.trim());
-  const out = {
-    duration: 0, sampleRate: 0,
-    pitch: { n: 0, dx: 0, x1: 0, values: [] },
-    intensity: { n: 0, dx: 0, x1: 0, values: [] },
-    hnrMean: -99, jitter: -1
-  };
-  let mode = null, inValues = false, block = null;
-  for (const line of lines) {
-    if (!line || line === 'BEGIN' || line === 'END') continue;
-    if (line === 'PITCH') { mode = 'PITCH'; block = out.pitch; continue; }
-    if (line === 'INTENSITY') { mode = 'INTENSITY'; block = out.intensity; continue; }
-    if (line === 'values') { inValues = true; continue; }
-    if (line === 'endvalues') { inValues = false; mode = null; block = null; continue; }
-    if (inValues && block) {
-      block.values.push(line === 'u' || line === '--undefined--' ? NaN : parseFloat(line));
-      continue;
-    }
-    const sp = line.indexOf(' ');
-    if (sp < 0) continue;
-    const key = line.slice(0, sp);
-    const num = parseFloat(line.slice(sp + 1).trim());
-    if (mode === 'PITCH' || mode === 'INTENSITY') {
-      if (key === 'n') block.n = num | 0;
-      else if (key === 'dx') block.dx = num;
-      else if (key === 'x1') block.x1 = num;
-      continue;
-    }
-    if (key === 'DURATION') out.duration = num;
-    else if (key === 'SAMPLERATE') out.sampleRate = num;
-    else if (key === 'HNR_MEAN') out.hnrMean = num;
-    else if (key === 'JITTER') out.jitter = num;
-  }
-  return out;
-}
+// buildAnalysisScript / parseAnalysisOutput are imported from the shared
+// praat-analysis.js (the single source of truth used by the live engine, the
+// LOSO harness, and the tests) so targets.json is built with the EXACT same
+// pitch/intensity/per-frame-harmonicity analysis the classifier sees at runtime.
 
 /* ---------- Two-pass over the corpus ---------- */
 
@@ -250,7 +144,8 @@ for (const f of files) {
     process.stderr.write(`  ${processed}/${files.length}\r`);
   }
   const bytes = readFileSync(f.path);
-  const sound = praat.readAudio(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '/tmp/in');
+  // Preserve the extension: praat-wasm picks its decoder from the filename.
+  const sound = praat.readAudio(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), `/tmp/in.${f.ext}`);
   if (!sound) { praat.removeAll(); continue; }
 
   const text = praat.run(buildAnalysisScript(sound.id));
@@ -274,6 +169,7 @@ for (const f of files) {
     speaker: f.speaker,
     pitch: analysis.pitch,
     intensity: analysis.intensity,
+    harmonicity: analysis.harmonicity,
     hnrMean: analysis.hnrMean,
     jitter: analysis.jitter,
     duration: analysis.duration
@@ -294,13 +190,16 @@ for (const ff of fileFeatures) {
   if (!norm) continue;
   // Provide a normalizer the extractFeatures pipeline will see as trusted.
   const feats = extractFeatures(
-    { pitch: ff.pitch, intensity: ff.intensity, hnrMean: ff.hnrMean, jitter: ff.jitter, duration: ff.duration },
+    { pitch: ff.pitch, intensity: ff.intensity, harmonicity: ff.harmonicity,
+      hnrMean: ff.hnrMean, jitter: ff.jitter, duration: ff.duration },
     norm
   );
   if (!feats.voiced) continue;
   const key = `${ff.syllable}|${ff.tone}`;
   if (!groups.has(key)) groups.set(key, []);
-  groups.get(key).push(feats.coefs);
+  // Carry the non-shape features the classifier now keys on (offset, duration)
+  // alongside the Legendre coefs so the target band reflects the full acceptance.
+  groups.get(key).push({ coefs: feats.coefs, offset: feats.offset, dur: feats.voicedFrameCount });
 }
 
 /* ---------- Aggregation ---------- */
@@ -312,25 +211,29 @@ for (const [key, runs] of groups) {
   if (runs.length === 0) continue;
 
   const coefs = [0, 0, 0, 0];
-  for (const r of runs) for (let k = 0; k < 4; k++) coefs[k] += r[k];
+  for (const r of runs) for (let k = 0; k < 4; k++) coefs[k] += r.coefs[k];
   for (let k = 0; k < 4; k++) coefs[k] /= runs.length;
 
   const sd = [0, 0, 0, 0];
   if (runs.length > 1) {
-    for (const r of runs) for (let k = 0; k < 4; k++) sd[k] += (r[k] - coefs[k]) ** 2;
+    for (const r of runs) for (let k = 0; k < 4; k++) sd[k] += (r.coefs[k] - coefs[k]) ** 2;
     for (let k = 0; k < 4; k++) sd[k] = Math.sqrt(sd[k] / (runs.length - 1));
   }
+
+  const mean = sel => runs.reduce((s, r) => s + sel(r), 0) / runs.length;
 
   if (!syllables[syllable]) syllables[syllable] = {};
   syllables[syllable][tone] = {
     coefs: coefs.map(v => Number(v.toFixed(4))),
     sd: sd.map(v => Number(v.toFixed(4))),
+    offset: Number(mean(r => r.offset).toFixed(4)),   // mean end-height (semitones re speaker mean)
+    dur: Math.round(mean(r => r.dur)),                // mean voiced-frame count (~5 ms/frame)
     n: runs.length
   };
 }
 
 const out = {
-  version: 'tone-perfect-v1',
+  version: 'tone-perfect-v2',
   generatedAt: new Date().toISOString(),
   speakers: [...speakerNormalizers.keys()].sort(),
   syllables

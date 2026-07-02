@@ -38,6 +38,11 @@ function rampUp (x, low, high) {
   return (x - low) / (high - low);
 }
 
+/** One-sided ramp: 1 below `low`, linearly down to 0 at `high`, capped. */
+function rampDown (x, low, high) {
+  return 1 - rampUp(x, low, high);
+}
+
 /**
  * Weighted score: returns sum(score_i * w_i) / sum(w_i), skipping rules
  * where w_i is 0. Lets us conditionally include register-dependent rules.
@@ -61,6 +66,8 @@ function weighted (rules) {
  */
 function scoreTones (f) {
   const [c0, c1, c2 /* , c3 */] = f.coefs;
+  const off = f.offset;                 // end height, semitones re speaker mean
+  const dur = f.voicedFrameCount || 0;  // voiced duration proxy (~5 ms/frame)
   const reg = f.registerTrusted ? 1 : 0;
 
   // T1: high level. Shape: |c1| small, |c2| small. Register: c0 high.
@@ -78,19 +85,37 @@ function scoreTones (f) {
     [bell(c0, 1, 4),         0.6 * reg]
   ]);
 
-  // T3: low dipping. Shape: c2 positive (U). Register: c0 low.
+  // T3: low dipping. The classic cue is positive curvature (a U-dip). But many
+  // real T3s — especially citation "half-thirds" — fall low with little
+  // measurable curvature and, on shape alone, look like T4 (a fall) or T1
+  // (flat). They're rescued by a fall-then-recover cue: a genuine fall whose
+  // OFFSET ends ABOVE the T4 floor (T3 recovers; T4 plummets to the bottom).
+  // Both cues are register-normalized semitones, so this transfers across
+  // speakers and speaking rate. (See scripts/diagnose-t3.mjs for the corpus
+  // evidence: T3→T4 misses end at ~-2.9 ST vs genuine T4 at ~-5.75 ST.)
+  const t3dip = rampUp(c2, 1, 3.5);
+  const t3recover = weighted([
+    [rampUp(-c1, 1.5, 4),        0.7],   // there is a genuine fall...
+    [rampUp(off, -4.5, -1.5),    1.0],   // ...that ends above the T4 floor...
+    [rampUp(dur, 100, 160),      1.0]    // ...and it's long (T3 is the long tone)
+  ]);
   const t3 = weighted([
-    [rampUp(c2, 1, 3.5),     1.0],
-    [bell(c1, -1, 3),        0.3],
-    [rampUp(-c0, 0, 4),      0.7 * reg]
+    [Math.max(t3dip, t3recover), 1.0],
+    [bell(c1, -1, 3),            0.3],
+    [rampUp(-c0, 0, 4),          0.7 * reg]
   ]);
 
-  // T4: falling. Shape: c1 strongly negative. Register: c0 mid-high.
-  const t4 = weighted([
+  // T4: falling. Shape: c1 strongly negative. T4 is also the SHORT tone, so a
+  // long low-falling contour is far more likely a half-third T3 than a T4 — a
+  // duration gate attenuates (does not kill) T4 as it lengthens, which is what
+  // keeps those long half-thirds from being read as T4. (Genuine T4 is short,
+  // ~83 voiced frames, so it passes the gate untouched; see diagnose-t3.mjs.)
+  const t4base = weighted([
     [rampUp(-c1, 2, 5),      1.0],
     [bell(c2, 0, 3),         0.3],
     [bell(c0, 1, 4),         0.5 * reg]
   ]);
+  const t4 = t4base * (0.5 + 0.5 * rampDown(dur, 95, 150));
 
   return [t1, t2, t3, t4];
 }
