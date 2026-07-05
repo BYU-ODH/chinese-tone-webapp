@@ -143,12 +143,14 @@ function runSoundsCorpus (praat) {
 
     // Consonant-rejection contract (per-clip, strict): for a syllable with a
     // voiced consonant flanking the vowel, the vowel core MUST be a proper
-    // subset of the voiced span — some consonant frames were trimmed.
+    // subset of the RAW voiced span — some frames were trimmed, whether by
+    // speech endpointing (findSpeechSpan) or the vowel-core selector. Compared
+    // against the raw span so it holds no matter which stage does the trimming.
     if (item.voicedOnset || item.voicedCoda) {
       consonantClips.push(item.pinyin);
-      check(features.vowelCoreFrames < features.voicedFrameCount,
-        `${tag}: voiced consonant trimmed from core ` +
-        `(${features.vowelCoreFrames} < ${features.voicedFrameCount})`);
+      check(features.vowelCoreFrames < features.rawVoicedFrameCount,
+        `${tag}: voiced consonant/edge trimmed from core ` +
+        `(${features.vowelCoreFrames} < ${features.rawVoicedFrameCount} raw)`);
       check(features.vowelCoreFrames >= 6,
         `${tag}: core retains a fittable vowel (${features.vowelCoreFrames} >= 6)`);
     }
@@ -218,10 +220,11 @@ async function runTonePerfect () {
 
   // Aggregate regression bar. History: the untuned classifier scored 77.3% on
   // the full corpus (T3 recall just 48%). Adding T3 fall-recover + duration cues
-  // (see classifier.js / diagnose-t3.mjs) lifted the full corpus to 82.5%
-  // (T3 75%, T4 76%). The 80% floor catches a real regression; the 30/tone
-  // sample runs a few points higher, so the floor holds for both. Raise it (and
-  // add per-tone floors) as the classifier improves further.
+  // (classifier.js / diagnose-t3.mjs) lifted it to 82.5%; adding speech
+  // endpointing (features.js findSpeechSpan — clip leading/trailing non-speech)
+  // brought it to 83.0% (T1 96, T2 86, T3 72, T4 77). The 80% floor catches a
+  // real regression; the 30/tone sample runs a few points higher, so the floor
+  // holds for both. Raise it (and add per-tone floors) as the classifier improves.
   check(accuracy(aggregate).pct >= 0.80,
     `tone_perfect LOSO accuracy ${(100 * accuracy(aggregate).pct).toFixed(1)}% >= 80%`);
 }

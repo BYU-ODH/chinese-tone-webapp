@@ -234,6 +234,18 @@ const VOWEL_CORE_HNR_DROP = 8;     // dB below the loud-frame median HNR marking
 const VOWEL_CORE_ERODE_CAP = 0.4;  // max fraction of the span HNR erosion may trim
 const MIN_CORE_FRAMES = 6;         // floor so the order-3 Legendre fit stays well-posed
 
+// Endpointing: clip leading/trailing NON-SPEECH (silence, breath, lip clicks,
+// pitched background noise) from the voiced span before anything downstream —
+// display contour, median, speaker reference, and the vowel-core search — uses
+// it. Praat's pitch tracker readily emits an F0 for low-energy breath and edge
+// noise, so the raw firstV..lastV span overreaches; this trims it back to the
+// speech. Anchored on the vowel's intensity peak (definitely speech) so a loud
+// leading/trailing blip separated by an intensity dip is dropped for free.
+const SPEECH_SPAN_DROP_DB = 25;   // frames >25 dB below the vowel peak are edge silence/noise
+const SPEECH_EDGE_HNR_FLOOR = 8;  // dB; a finite HNR below this is aperiodic-ish...
+const SPEECH_EDGE_QUIET_DB = 15;  // ...but only clipped if ALSO this far below the peak (spares
+                                  // voiced consonants: low HNR yet loud). NaN HNR clips regardless.
+
 /**
  * Extract features from a Praat analysis. Always returns a struct, but
  * .voiced=false signals the analysis was unreliable (caller should not
@@ -251,13 +263,31 @@ export function extractFeatures (analysis, normalizer) {
   // bridging alone.
   let firstV = -1;
   let lastV = -1;
-  let voicedCount = 0;
+  let rawVoicedCount = 0;              // voiced frames BEFORE endpointing
   for (let i = 0; i < N; i++) {
     if (Number.isFinite(rawHz[i]) && rawHz[i] > 0) {
       if (firstV < 0) firstV = i;
       lastV = i;
-      voicedCount++;
+      rawVoicedCount++;
     }
+  }
+
+  // Clip leading/trailing non-speech (breath, clicks, edge noise) before the
+  // span is used anywhere. This tightens firstV/lastV around the actual speech;
+  // see findSpeechSpan. On clean recordings it trims only a few edge frames; on
+  // noisy ones it removes the pitched-noise/breath tails Praat tracked as voiced.
+  if (firstV >= 0) {
+    const span = findSpeechSpan(intensity, harmonicity, t0, dx, firstV, lastV);
+    firstV = span.start;
+    lastV = span.end;
+  }
+
+  // Count originally-voiced frames WITHIN the clipped span. Kept for the
+  // confidence gate (so bridging alone can't carry an analysis) and as the
+  // voiced-duration proxy the classifier uses.
+  let voicedCount = 0;
+  for (let i = firstV; i <= lastV && i >= 0; i++) {
+    if (Number.isFinite(rawHz[i]) && rawHz[i] > 0) voicedCount++;
   }
 
   // Bridge short voicing dropouts inside the voiced span. Praat's tracker
@@ -395,6 +425,7 @@ export function extractFeatures (analysis, normalizer) {
     voiced: true,
     registerTrusted,
     voicedFrameCount: voicedCount,
+    rawVoicedFrameCount: rawVoicedCount,   // before speech-span endpointing
     vowelCoreFrames: core.end - core.start,
     voicedDuration: voicedDur,
     duration,
@@ -466,6 +497,73 @@ function sampleBlockAt (blk, t) {
   if (!Number.isFinite(a)) return Number.isFinite(b) ? b : NaN;
   if (!Number.isFinite(b)) return a;
   return a * (1 - f) + b * f;
+}
+
+/**
+ * Endpoint the speech: clip leading/trailing non-speech frames from the raw
+ * voiced span [firstV, lastV]. Returns refined inclusive frame indices
+ * {start, end}.
+ *
+ * Two stages, both anchored on the vowel's intensity peak (which is unambiguously
+ * speech), mirroring findVowelCore but tuned to remove NON-SPEECH rather than
+ * isolate the nucleus — so it keeps the tone-bearing sonorant glides:
+ *
+ *   1. Intensity span. Grow a contiguous run out from the peak while intensity
+ *      stays within SPEECH_SPAN_DROP_DB (25 dB, generous) of it. This drops
+ *      near-silent edges and any leading/trailing blip separated from the vowel
+ *      by an intensity dip (a lip click, a stray noise burst).
+ *
+ *   2. Aperiodic-edge erosion. From each END inward, drop frames Praat found no
+ *      harmonic structure for (NaN HNR — breath, aspiration, broadband noise),
+ *      plus finite-but-low-HNR frames that are ALSO quiet. The quiet guard is
+ *      what spares voiced consonants: a nasal/lateral onset has low HNR but stays
+ *      loud, so it's kept in the span (findVowelCore excludes it from the fit
+ *      instead). Erosion stops at the first speech frame, so interior creak
+ *      (which can also read low HNR) is never touched.
+ *
+ * Both use per-frame intensity/harmonicity sampled from their contours; a NaN
+ * intensity counts as loud so an interpolation gap can't truncate the span. If
+ * the harmonicity block is absent (older/synthetic input) HNR reads NaN and
+ * stage 2 would erode everything, so it's skipped — stage 1 alone still trims.
+ */
+function findSpeechSpan (intensity, harmonicity, t0, dx, firstV, lastV) {
+  const n = lastV - firstV + 1;
+  if (n <= MIN_VOICED_FRAMES) return { start: firstV, end: lastV };
+
+  const db = new Array(n);
+  const hnr = new Array(n);
+  let peakDb = -Infinity;
+  let peakOff = 0;
+  let anyHnr = false;
+  for (let k = 0; k < n; k++) {
+    const t = t0 + (firstV + k) * dx;
+    db[k] = sampleBlockAt(intensity, t);
+    hnr[k] = sampleBlockAt(harmonicity, t);
+    if (Number.isFinite(hnr[k])) anyHnr = true;
+    if (Number.isFinite(db[k]) && db[k] > peakDb) { peakDb = db[k]; peakOff = k; }
+  }
+  if (!Number.isFinite(peakDb)) return { start: firstV, end: lastV };
+
+  // Stage 1: contiguous loud run around the peak.
+  const cutoff = peakDb - SPEECH_SPAN_DROP_DB;
+  const loud = (k) => !Number.isFinite(db[k]) || db[k] >= cutoff;
+  let s = peakOff;
+  let e = peakOff + 1;             // exclusive
+  while (s > 0 && loud(s - 1)) s--;
+  while (e < n && loud(e)) e++;
+
+  // Stage 2: erode aperiodic (breath/noise) frames inward from each end. NaN HNR
+  // (no measurable harmonics) always erodes; finite-but-low HNR erodes only if
+  // also quiet, so a loud voiced consonant onset/coda survives.
+  if (anyHnr) {
+    const quietCutoff = peakDb - SPEECH_EDGE_QUIET_DB;
+    const aperiodic = (k) => !Number.isFinite(hnr[k])
+      || (hnr[k] < SPEECH_EDGE_HNR_FLOOR && Number.isFinite(db[k]) && db[k] < quietCutoff);
+    while (e - s > MIN_VOICED_FRAMES && aperiodic(s)) s++;
+    while (e - s > MIN_VOICED_FRAMES && aperiodic(e - 1)) e--;
+  }
+
+  return { start: firstV + s, end: firstV + e - 1 };
 }
 
 /**

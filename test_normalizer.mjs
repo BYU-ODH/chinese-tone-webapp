@@ -217,6 +217,41 @@ console.log('\n--- 6. Voiced-consonant onset must not contaminate the vowel ---'
     `(got T${classify(1, features).bestTone})`);
 }
 
+console.log('\n--- 7. Endpointing: leading/trailing non-speech is clipped ---');
+{
+  // A high-flat vowel bracketed by non-speech Praat still tracks an F0 for:
+  //   leading  [0, 0.15): near-silence (42 dB, ~28 below the 70 dB vowel) — the
+  //            intensity stage must clip it.
+  //   trailing (0.80, 1]: a breathy release (62 dB, loud enough to survive the
+  //            intensity gate, but NaN HNR) — the aperiodic-edge stage must clip it.
+  const dur = 0.6;
+  const nFrames = Math.round(dur / DX);            // 120
+  const vowel = (u) => u >= 0.15 && u <= 0.80;
+  const f0fn = (u) => st(5);                        // flat T1 throughout (all voiced)
+  const dbFn = (u) => (u < 0.15 ? 42 : (u > 0.80 ? 62 : 70));
+  const hnrFn = (u) => (u > 0.80 ? NaN : 15);       // trailing breath is aperiodic
+
+  const f = extractFeatures(makeAnalysis(f0fn, dur, dbFn, hnrFn), new SpeakerNormalizer());
+  // Recover the refined span from the display contour (spans firstV..lastV).
+  const x1 = DX / 2;
+  const firstFrame = Math.round((f.displayTimes[0] - x1) / DX);
+  const lastFrame = Math.round((f.displayTimes[f.displayTimes.length - 1] - x1) / DX);
+
+  check(f.voiced, `voiced vowel survives endpointing (reason=${f.reason || 'n/a'})`);
+  check(firstFrame >= Math.round(0.15 * nFrames) - 2,
+    `leading near-silence clipped by intensity (span starts at frame ${firstFrame}, silence ends ~${Math.round(0.15 * nFrames)})`);
+  check(lastFrame <= Math.round(0.80 * nFrames) + 2,
+    `trailing breath clipped by NaN-HNR (span ends at frame ${lastFrame}, breath starts ~${Math.round(0.80 * nFrames)})`);
+  check(f.voicedFrameCount < nFrames * 0.8,
+    `voiced-frame count reflects the clip (${f.voicedFrameCount} < ${Math.round(nFrames * 0.8)} of ${nFrames} raw)`);
+
+  // Control: the identical vowel with clean flat intensity/HNR must NOT be
+  // clipped — endpointing only fires on genuine non-speech.
+  const clean = extractFeatures(makeAnalysis(f0fn, dur), new SpeakerNormalizer());
+  check(clean.voicedFrameCount >= nFrames - 1,
+    `clean vowel keeps the whole span (${clean.voicedFrameCount}/${nFrames} frames, no false clipping)`);
+}
+
 /* ------------------------------------------------------------------ */
 
 console.log('\n' + '='.repeat(40));
