@@ -1,0 +1,296 @@
+[
+  {
+    "timestamp": "2026-07-22T23:35:13.160Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "pre-tuning baseline (de Jong & Wempe defaults, untuned)",
+    "corpus": "ToneAudio_2026-07-22",
+    "stride": 1,
+    "summary": {
+      "double": {
+        "overall": {
+          "total": 1275,
+          "voiced": 1275,
+          "peaks": 628,
+          "evenSplit": 647,
+          "allSpansScorable": 1206,
+          "voicedPct": 100,
+          "peaksPct": 49.3,
+          "evenSplitPct": 50.7,
+          "allSpansScorablePct": 94.6
+        },
+        "bySpeakerCondition": {
+          "Jinyue/Noisy": {
+            "total": 120,
+            "voiced": 120,
+            "peaks": 84,
+            "evenSplit": 36,
+            "allSpansScorable": 120,
+            "voicedPct": 100,
+            "peaksPct": 70,
+            "evenSplitPct": 30,
+            "allSpansScorablePct": 100
+          },
+          "Jinyue/Quiet": {
+            "total": 460,
+            "voiced": 460,
+            "peaks": 178,
+            "evenSplit": 282,
+            "allSpansScorable": 430,
+            "voicedPct": 100,
+            "peaksPct": 38.7,
+            "evenSplitPct": 61.3,
+            "allSpansScorablePct": 93.5
+          },
+          "Wei/Noisy": {
+            "total": 200,
+            "voiced": 200,
+            "peaks": 130,
+            "evenSplit": 70,
+            "allSpansScorable": 199,
+            "voicedPct": 100,
+            "peaksPct": 65,
+            "evenSplitPct": 35,
+            "allSpansScorablePct": 99.5
+          },
+          "Wei/Quiet": {
+            "total": 495,
+            "voiced": 495,
+            "peaks": 236,
+            "evenSplit": 259,
+            "allSpansScorable": 457,
+            "voicedPct": 100,
+            "peaksPct": 47.7,
+            "evenSplitPct": 52.3,
+            "allSpansScorablePct": 92.3
+          }
+        }
+      },
+      "phrase": {
+        "overall": {
+          "total": 541,
+          "voiced": 541,
+          "peaks": 42,
+          "evenSplit": 499,
+          "allSpansScorable": 371,
+          "voicedPct": 100,
+          "peaksPct": 7.8,
+          "evenSplitPct": 92.2,
+          "allSpansScorablePct": 68.6
+        },
+        "bySpeakerCondition": {
+          "Jinyue/Noisy": {
+            "total": 52,
+            "voiced": 52,
+            "peaks": 14,
+            "evenSplit": 38,
+            "allSpansScorable": 51,
+            "voicedPct": 100,
+            "peaksPct": 26.9,
+            "evenSplitPct": 73.1,
+            "allSpansScorablePct": 98.1
+          },
+          "Jinyue/Quiet": {
+            "total": 184,
+            "voiced": 184,
+            "peaks": 7,
+            "evenSplit": 177,
+            "allSpansScorable": 66,
+            "voicedPct": 100,
+            "peaksPct": 3.8,
+            "evenSplitPct": 96.2,
+            "allSpansScorablePct": 35.9
+          },
+          "Wei/Noisy": {
+            "total": 80,
+            "voiced": 80,
+            "peaks": 8,
+            "evenSplit": 72,
+            "allSpansScorable": 80,
+            "voicedPct": 100,
+            "peaksPct": 10,
+            "evenSplitPct": 90,
+            "allSpansScorablePct": 100
+          },
+          "Wei/Quiet": {
+            "total": 225,
+            "voiced": 225,
+            "peaks": 13,
+            "evenSplit": 212,
+            "allSpansScorable": 174,
+            "voicedPct": 100,
+            "peaksPct": 5.8,
+            "evenSplitPct": 94.2,
+            "allSpansScorablePct": 77.3
+          }
+        }
+      }
+    },
+    "notes": "Full ToneAudio_2026-07-22 double+phrase corpus (1816 clips), segmentSyllables() with untuned de Jong & Wempe defaults (SMOOTH_WINDOW_SEC=0.03, MIN_PROMINENCE_DB=6). Consistent Noisy > Quiet peaks-rate pattern across all 4 speaker/cat groups is unexplained -- plausible Lombard-effect hyperarticulation hypothesis, NOT yet verified mechanistically."
+  },
+  {
+    "timestamp": "2026-07-23T00:17:28.447Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "pre-tuning baseline + prominence diagnostic",
+    "corpus": "ToneAudio_2026-07-22",
+    "stride": 1,
+    "summary": {
+      "double": {
+        "overall": {
+          "total": 1275,
+          "voiced": 1275,
+          "peaks": 628,
+          "evenSplit": 647,
+          "allSpansScorable": 1206,
+          "voicedPct": 100,
+          "peaksPct": 49.3,
+          "evenSplitPct": 50.7,
+          "allSpansScorablePct": 94.6,
+          "meanTopProminenceDb": 20.3,
+          "meanCandidateCount": 1.7
+        },
+        "bySpeakerCondition": {
+          "Jinyue/Noisy": {
+            "total": 120,
+            "voiced": 120,
+            "peaks": 84,
+            "evenSplit": 36,
+            "allSpansScorable": 120,
+            "voicedPct": 100,
+            "peaksPct": 70,
+            "evenSplitPct": 30,
+            "allSpansScorablePct": 100,
+            "meanTopProminenceDb": 16.1,
+            "meanCandidateCount": 2.2
+          },
+          "Jinyue/Quiet": {
+            "total": 460,
+            "voiced": 460,
+            "peaks": 178,
+            "evenSplit": 282,
+            "allSpansScorable": 430,
+            "voicedPct": 100,
+            "peaksPct": 38.7,
+            "evenSplitPct": 61.3,
+            "allSpansScorablePct": 93.5,
+            "meanTopProminenceDb": 23,
+            "meanCandidateCount": 1.8
+          },
+          "Wei/Noisy": {
+            "total": 200,
+            "voiced": 200,
+            "peaks": 130,
+            "evenSplit": 70,
+            "allSpansScorable": 199,
+            "voicedPct": 100,
+            "peaksPct": 65,
+            "evenSplitPct": 35,
+            "allSpansScorablePct": 99.5,
+            "meanTopProminenceDb": 17.1,
+            "meanCandidateCount": 1.8
+          },
+          "Wei/Quiet": {
+            "total": 495,
+            "voiced": 495,
+            "peaks": 236,
+            "evenSplit": 259,
+            "allSpansScorable": 457,
+            "voicedPct": 100,
+            "peaksPct": 47.7,
+            "evenSplitPct": 52.3,
+            "allSpansScorablePct": 92.3,
+            "meanTopProminenceDb": 20.6,
+            "meanCandidateCount": 1.5
+          }
+        }
+      },
+      "phrase": {
+        "overall": {
+          "total": 541,
+          "voiced": 541,
+          "peaks": 42,
+          "evenSplit": 499,
+          "allSpansScorable": 371,
+          "voicedPct": 100,
+          "peaksPct": 7.8,
+          "evenSplitPct": 92.2,
+          "allSpansScorablePct": 68.6,
+          "meanTopProminenceDb": 24.1,
+          "meanCandidateCount": 4.8
+        },
+        "bySpeakerCondition": {
+          "Jinyue/Noisy": {
+            "total": 52,
+            "voiced": 52,
+            "peaks": 14,
+            "evenSplit": 38,
+            "allSpansScorable": 51,
+            "voicedPct": 100,
+            "peaksPct": 26.9,
+            "evenSplitPct": 73.1,
+            "allSpansScorablePct": 98.1,
+            "meanTopProminenceDb": 21.5,
+            "meanCandidateCount": 6.8
+          },
+          "Jinyue/Quiet": {
+            "total": 184,
+            "voiced": 184,
+            "peaks": 7,
+            "evenSplit": 177,
+            "allSpansScorable": 66,
+            "voicedPct": 100,
+            "peaksPct": 3.8,
+            "evenSplitPct": 96.2,
+            "allSpansScorablePct": 35.9,
+            "meanTopProminenceDb": 26.2,
+            "meanCandidateCount": 4
+          },
+          "Wei/Noisy": {
+            "total": 80,
+            "voiced": 80,
+            "peaks": 8,
+            "evenSplit": 72,
+            "allSpansScorable": 80,
+            "voicedPct": 100,
+            "peaksPct": 10,
+            "evenSplitPct": 90,
+            "allSpansScorablePct": 100,
+            "meanTopProminenceDb": 19.5,
+            "meanCandidateCount": 5.3
+          },
+          "Wei/Quiet": {
+            "total": 225,
+            "voiced": 225,
+            "peaks": 13,
+            "evenSplit": 212,
+            "allSpansScorable": 174,
+            "voicedPct": 100,
+            "peaksPct": 5.8,
+            "evenSplitPct": 94.2,
+            "allSpansScorablePct": 77.3,
+            "meanTopProminenceDb": 24.7,
+            "meanCandidateCount": 4.8
+          }
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2026-07-23T00:54:49.386Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "threshold sweep vs per-syllable tone accuracy (double-syllable, citation tones)",
+    "corpus": "ToneAudio_2026-07-22",
+    "eligibleClips": 1027,
+    "baselineAlwaysEvenSplitAccuracy": 54.1,
+    "bestCombo": {
+      "smoothWindowSec": 0.05,
+      "minProminenceDb": 10,
+      "peaksPct": 36.7,
+      "overallAccuracy": 54.7,
+      "deltaVsBaseline": 0.6
+    },
+    "notes": "Swept smoothWindowSec x {0.015,0.03,0.05} and minProminenceDb x {2,3,4,5,6,8,10,14} (24 combos) against per-syllable tone classification accuracy on 1027 real double-syllable clips (both syllables citation-tone-clear, sandhi not applied -- a constant bias across all combos). NO combo meaningfully beats always-even-split (54.1%); best is +0.6pp at 36.7% peaks-rate. Most combos are WORSE than baseline. Conclusion: intensity-peak-based segmentation (de Jong & Wempe style, as implemented) does not reliably find genuine syllable boundaries on this corpus -- even when it reports method=peaks (structural success), the resulting boundaries are not meaningfully better than blindly splitting the clip in half. This is a real negative result, not a tuning gap: the threshold space was swept broadly and none of it clears the bar."
+  }
+]

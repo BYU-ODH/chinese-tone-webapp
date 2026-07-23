@@ -1,0 +1,609 @@
+[
+  {
+    "timestamp": "2026-07-22T19:31:10.951Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "baseline (pre-octave-fix, pre-jitter-removal)",
+    "corpus": "tone-perfect",
+    "featureCacheVersion": 2,
+    "sampleSize": {
+      "scored": 9767,
+      "skipped": 72,
+      "total": 9839
+    },
+    "overall": {
+      "correct": 8106,
+      "total": 9767,
+      "pct": 0.8299375447936931
+    },
+    "perTone": {
+      "1": 0.964213094753965,
+      "2": 0.8601626016260162,
+      "3": 0.7198027937551356,
+      "4": 0.7734051367025684
+    },
+    "perSpeaker": {
+      "FV1": {
+        "correct": 1518,
+        "total": 1640,
+        "pct": 0.925609756097561
+      },
+      "FV2": {
+        "correct": 1223,
+        "total": 1638,
+        "pct": 0.7466422466422467
+      },
+      "FV3": {
+        "correct": 1506,
+        "total": 1639,
+        "pct": 0.9188529591214155
+      },
+      "MV1": {
+        "correct": 1148,
+        "total": 1613,
+        "pct": 0.7117172969621822
+      },
+      "MV2": {
+        "correct": 1420,
+        "total": 1636,
+        "pct": 0.8679706601466992
+      },
+      "MV3": {
+        "correct": 1291,
+        "total": 1601,
+        "pct": 0.806371018113679
+      }
+    },
+    "notes": "Re-scored from the pre-existing features-all-v2.json cache (full corpus, LOSO). gitCommit reflects current HEAD, not necessarily the code that produced v2 -- featureCacheVersion is the authoritative provenance marker for this row."
+  },
+  {
+    "timestamp": "2026-07-22T19:31:27.333Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "baseline (pre-octave-fix, pre-jitter-removal)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": 2,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 129,
+      "total": 244,
+      "pct": 0.5286885245901639
+    },
+    "perTone": {
+      "1": 0.7580645161290323,
+      "2": 0.3582089552238806,
+      "3": 0.3793103448275862,
+      "4": 0.631578947368421
+    },
+    "perSpeaker": {
+      "Jinyue-Quiet": {
+        "correct": 70,
+        "total": 92,
+        "pct": 0.7608695652173914
+      },
+      "Jinyue-Noisy": {
+        "correct": 15,
+        "total": 36,
+        "pct": 0.4166666666666667
+      },
+      "Wei-Quiet": {
+        "correct": 35,
+        "total": 76,
+        "pct": 0.4605263157894737
+      },
+      "Wei-Noisy": {
+        "correct": 9,
+        "total": 40,
+        "pct": 0.225
+      }
+    },
+    "confusion": {
+      "1": {
+        "1": 47,
+        "2": 0,
+        "3": 8,
+        "4": 7
+      },
+      "2": {
+        "1": 13,
+        "2": 24,
+        "3": 26,
+        "4": 4
+      },
+      "3": {
+        "1": 13,
+        "2": 20,
+        "3": 22,
+        "4": 3
+      },
+      "4": {
+        "1": 5,
+        "2": 5,
+        "3": 11,
+        "4": 36
+      }
+    },
+    "notes": "ToneAudio_2026-07-22, single-word clips only (19 tokens, 2 speakers Wei/Jinyue, Quiet+Noisy), fresh normalizer per clip. Computed before the 2026-07-22 octave-correction + jitter-removal changes."
+  },
+  {
+    "timestamp": "2026-07-22T19:55:00.385Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "octave-fix + jitter-removal",
+    "corpus": "tone-perfect",
+    "featureCacheVersion": 3,
+    "sampleSize": {
+      "scored": 9767,
+      "skipped": 72,
+      "total": 9839
+    },
+    "overall": {
+      "correct": 8124,
+      "total": 9767,
+      "pct": 0.8317804853076687
+    },
+    "perTone": {
+      "1": 0.9650264335095567,
+      "2": 0.8597560975609756,
+      "3": 0.7181594083812654,
+      "4": 0.7821043910521955
+    },
+    "perSpeaker": {
+      "FV1": {
+        "correct": 1521,
+        "total": 1640,
+        "pct": 0.927439024390244
+      },
+      "FV2": {
+        "correct": 1221,
+        "total": 1638,
+        "pct": 0.7454212454212454
+      },
+      "FV3": {
+        "correct": 1504,
+        "total": 1639,
+        "pct": 0.9176327028676022
+      },
+      "MV1": {
+        "correct": 1150,
+        "total": 1613,
+        "pct": 0.712957222566646
+      },
+      "MV2": {
+        "correct": 1420,
+        "total": 1636,
+        "pct": 0.8679706601466992
+      },
+      "MV3": {
+        "correct": 1308,
+        "total": 1601,
+        "pct": 0.8169893816364772
+      }
+    },
+    "notes": "Full corpus LOSO, post octave-correction + dead jitter-pass removal (2026-07-22)."
+  },
+  {
+    "timestamp": "2026-07-22T20:10:31.373Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "octave-fix + jitter-removal",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": 3,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 129,
+      "total": 244,
+      "pct": 0.5286885245901639
+    },
+    "perTone": {
+      "1": 0.7741935483870968,
+      "2": 0.34328358208955223,
+      "3": 0.3793103448275862,
+      "4": 0.631578947368421
+    },
+    "perSpeaker": {
+      "Jinyue-Noisy": {
+        "correct": 16,
+        "total": 36,
+        "pct": 0.4444444444444444
+      },
+      "Jinyue-Quiet": {
+        "correct": 69,
+        "total": 92,
+        "pct": 0.75
+      },
+      "Wei-Noisy": {
+        "correct": 11,
+        "total": 40,
+        "pct": 0.275
+      },
+      "Wei-Quiet": {
+        "correct": 33,
+        "total": 76,
+        "pct": 0.4342105263157895
+      }
+    },
+    "confusion": {
+      "1": {
+        "1": 48,
+        "2": 0,
+        "3": 7,
+        "4": 7
+      },
+      "2": {
+        "1": 13,
+        "2": 23,
+        "3": 26,
+        "4": 5
+      },
+      "3": {
+        "1": 14,
+        "2": 19,
+        "3": 22,
+        "4": 3
+      },
+      "4": {
+        "1": 6,
+        "2": 5,
+        "3": 10,
+        "4": 36
+      }
+    },
+    "notes": "Net-zero vs baseline (129/244 both). NOT a no-op: an A/B on the same 244 clips (features.js with correction vs a neutralized copy) shows the correction changes coefs on 27% of clips and flips 10 predictions -- 3 wrong->right, 3 right->wrong, 4 wrong->different-wrong. All 6 flips fire at the LAST 2-5 frames of the voiced span (spans as short as 26 frames), never in the stable middle -- e.g. jiao4 (win): frames 22-25/26 corrected -6..-12ST; shei2 (loss): frames 6-18/93 corrected up to +24ST via 2-pass amplification (an already-corrected neighbor biases the next passs local median, escalating a modest misjudgment past a full extra octave); er4 and nu3 (losses): exactly +12ST on the final 2 frames, structurally IDENTICAL to ta1 and one nu3 case that were wins. Root cause: a genuine tone-final low creak (T3/T4s defining low tail) and a genuine tracker octave-slip are LOCALLY INDISTINGUISHABLE to a pitch-only continuity check -- both are a low excursion bounded by higher neighbors. Next refinement to try: gate correction on HNR -- a true tracker error should keep periodicity comparable to neighbors (confident wrong-octave candidate), while genuine creak measurably degrades it. Also: cap correction to +-1 octave and use single-pass against ORIGINAL (not already-corrected) neighbors to remove the 2-pass amplification bug. Confirmed harmless (no Tone Perfect regression, no ToneAudio regression) but not yet a proven win -- ship/keep, do not build further conclusions on top of it until the HNR-gated version is validated."
+  },
+  {
+    "timestamp": "2026-07-22T20:10:31.455Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "octave-fix + jitter-removal",
+    "corpus": "toneaudio-double",
+    "featureCacheVersion": 3,
+    "sampleSize": {
+      "scored": 1267,
+      "skipped": 8,
+      "total": 1275
+    },
+    "overall": null,
+    "perTone": null,
+    "collapse": {
+      "matchFirst": {
+        "n": 582,
+        "total": 1267,
+        "pct": 0.4593528018942384
+      },
+      "matchLast": {
+        "n": 478,
+        "total": 1267,
+        "pct": 0.3772691397000789
+      },
+      "matchAny": {
+        "n": 792,
+        "total": 1267,
+        "pct": 0.6250986582478295
+      },
+      "chanceAny": 0.40232833464877665
+    },
+    "notes": "No per-syllable segmentation yet; this is NOT a sequence-accuracy score."
+  },
+  {
+    "timestamp": "2026-07-22T20:10:31.528Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "octave-fix + jitter-removal",
+    "corpus": "toneaudio-phrase",
+    "featureCacheVersion": 3,
+    "sampleSize": {
+      "scored": 540,
+      "skipped": 1,
+      "total": 541
+    },
+    "overall": null,
+    "perTone": null,
+    "collapse": {
+      "matchFirst": {
+        "n": 173,
+        "total": 540,
+        "pct": 0.32037037037037036
+      },
+      "matchLast": {
+        "n": 110,
+        "total": 540,
+        "pct": 0.2037037037037037
+      },
+      "matchAny": {
+        "n": 463,
+        "total": 540,
+        "pct": 0.8574074074074074
+      },
+      "chanceAny": 0.8277777777777777
+    },
+    "notes": "No per-syllable segmentation yet; this is NOT a sequence-accuracy score."
+  },
+  {
+    "timestamp": "2026-07-22T22:39:59.416Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "post-octave-revert baseline",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": 4,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 129,
+      "total": 244,
+      "pct": 0.5286885245901639
+    },
+    "perTone": {
+      "1": 0.7580645161290323,
+      "2": 0.3582089552238806,
+      "3": 0.3793103448275862,
+      "4": 0.631578947368421
+    },
+    "perSpeaker": {
+      "Jinyue-Noisy": {
+        "correct": 15,
+        "total": 36,
+        "pct": 0.4166666666666667
+      },
+      "Jinyue-Quiet": {
+        "correct": 70,
+        "total": 92,
+        "pct": 0.7608695652173914
+      },
+      "Wei-Noisy": {
+        "correct": 9,
+        "total": 40,
+        "pct": 0.225
+      },
+      "Wei-Quiet": {
+        "correct": 35,
+        "total": 76,
+        "pct": 0.4605263157894737
+      }
+    },
+    "confusion": {
+      "1": {
+        "1": 47,
+        "2": 0,
+        "3": 8,
+        "4": 7
+      },
+      "2": {
+        "1": 13,
+        "2": 24,
+        "3": 26,
+        "4": 4
+      },
+      "3": {
+        "1": 13,
+        "2": 20,
+        "3": 22,
+        "4": 3
+      },
+      "4": {
+        "1": 5,
+        "2": 5,
+        "3": 11,
+        "4": 36
+      }
+    }
+  },
+  {
+    "timestamp": "2026-07-22T22:39:59.517Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "post-octave-revert baseline",
+    "corpus": "toneaudio-double",
+    "featureCacheVersion": 4,
+    "sampleSize": {
+      "scored": 1267,
+      "skipped": 8,
+      "total": 1275
+    },
+    "overall": null,
+    "perTone": null,
+    "collapse": {
+      "matchFirst": {
+        "n": 573,
+        "total": 1267,
+        "pct": 0.452249408050513
+      },
+      "matchLast": {
+        "n": 473,
+        "total": 1267,
+        "pct": 0.3733228097868982
+      },
+      "matchAny": {
+        "n": 781,
+        "total": 1267,
+        "pct": 0.6164167324388319
+      },
+      "chanceAny": 0.40232833464877665
+    },
+    "notes": "No per-syllable segmentation yet; this is NOT a sequence-accuracy score."
+  },
+  {
+    "timestamp": "2026-07-22T22:39:59.621Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "post-octave-revert baseline",
+    "corpus": "toneaudio-phrase",
+    "featureCacheVersion": 4,
+    "sampleSize": {
+      "scored": 540,
+      "skipped": 1,
+      "total": 541
+    },
+    "overall": null,
+    "perTone": null,
+    "collapse": {
+      "matchFirst": {
+        "n": 170,
+        "total": 540,
+        "pct": 0.3148148148148148
+      },
+      "matchLast": {
+        "n": 113,
+        "total": 540,
+        "pct": 0.20925925925925926
+      },
+      "matchAny": {
+        "n": 465,
+        "total": 540,
+        "pct": 0.8611111111111112
+      },
+      "chanceAny": 0.8277777777777777
+    },
+    "notes": "No per-syllable segmentation yet; this is NOT a sequence-accuracy score."
+  },
+  {
+    "timestamp": "2026-07-22T22:46:13.544Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "post-octave-revert baseline",
+    "corpus": "tone-perfect",
+    "featureCacheVersion": 4,
+    "sampleSize": {
+      "scored": 9767,
+      "skipped": 72,
+      "total": 9839
+    },
+    "overall": {
+      "correct": 8106,
+      "total": 9767,
+      "pct": 0.8299375447936931
+    },
+    "perTone": {
+      "1": 0.964213094753965,
+      "2": 0.8601626016260162,
+      "3": 0.7198027937551356,
+      "4": 0.7734051367025684
+    },
+    "perSpeaker": {
+      "FV1": {
+        "correct": 1518,
+        "total": 1640,
+        "pct": 0.925609756097561
+      },
+      "FV2": {
+        "correct": 1223,
+        "total": 1638,
+        "pct": 0.7466422466422467
+      },
+      "FV3": {
+        "correct": 1506,
+        "total": 1639,
+        "pct": 0.9188529591214155
+      },
+      "MV1": {
+        "correct": 1148,
+        "total": 1613,
+        "pct": 0.7117172969621822
+      },
+      "MV2": {
+        "correct": 1420,
+        "total": 1636,
+        "pct": 0.8679706601466992
+      },
+      "MV3": {
+        "correct": 1291,
+        "total": 1601,
+        "pct": 0.806371018113679
+      }
+    },
+    "notes": "Full-corpus LOSO re-run after removing correctOctaveErrors and bumping FEATURE_CACHE_VERSION to 4 (Step 0 of the multi-syllable plan). Numerically reproduces the pre-octave-fix baseline exactly (83.0% overall, identical per-tone/per-speaker breakdown), confirming the revert cleanly restored original behavior. evaluate-tones.mjs does not call bench-log itself; this row was appended manually from /tmp/post-revert-tp.log."
+  },
+  {
+    "timestamp": "2026-07-23T01:30:33.592Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "rnnoise-experiment: baseline (untouched mp3)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 131,
+      "total": 244,
+      "pct": 0.5368852459016393
+    },
+    "perSpeaker": {
+      "Jinyue-Noisy": {
+        "correct": 15,
+        "total": 36,
+        "pct": 0.4166666666666667
+      },
+      "Jinyue-Quiet": {
+        "correct": 70,
+        "total": 92,
+        "pct": 0.7608695652173914
+      },
+      "Wei-Noisy": {
+        "correct": 9,
+        "total": 40,
+        "pct": 0.225
+      },
+      "Wei-Quiet": {
+        "correct": 37,
+        "total": 76,
+        "pct": 0.4868421052631579
+      }
+    },
+    "notes": "Full 248-clip single-word corpus -- the untouched-mp3 control paired with the RNNoise-denoised row above."
+  },
+  {
+    "timestamp": "2026-07-23T01:30:33.690Z",
+    "gitCommit": "63be6c9",
+    "gitDirty": true,
+    "label": "rnnoise-experiment: RNNoise-denoised",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 240,
+      "skipped": 8,
+      "total": 248
+    },
+    "overall": {
+      "correct": 139,
+      "total": 240,
+      "pct": 0.5791666666666667
+    },
+    "perSpeaker": {
+      "Jinyue-Noisy": {
+        "correct": 16,
+        "total": 31,
+        "pct": 0.5161290322580645
+      },
+      "Jinyue-Quiet": {
+        "correct": 68,
+        "total": 91,
+        "pct": 0.7472527472527473
+      },
+      "Wei-Noisy": {
+        "correct": 15,
+        "total": 38,
+        "pct": 0.39473684210526316
+      },
+      "Wei-Quiet": {
+        "correct": 40,
+        "total": 80,
+        "pct": 0.5
+      }
+    },
+    "notes": "Full 248-clip single-word corpus, paired vs the SAME clips baseline row. Noisy: 31.6%->44.9% (+13.3pp). Quiet: 63.7%->63.2% (-0.5pp, no regression). Pipeline: ffmpeg decode -> 48kHz Float32 PCM -> @shiguredo/rnnoise-wasm frame-by-frame denoise (fresh DenoiseState per clip) -> encodeWav -> unmodified praat.readAudio->extractFeatures->classify. WASM payload ~4.8MB (rnnoise.js, wasm inlined) -- a decision-gate input now that the accuracy delta is known, not yet a size veto."
+  }
+]
