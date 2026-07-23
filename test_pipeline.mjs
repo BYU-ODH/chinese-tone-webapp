@@ -82,7 +82,7 @@ async function main () {
 
     const voicedCount = analysis.pitch.values.filter(v => Number.isFinite(v) && v > 0).length;
     console.log(`  pitch frames: ${analysis.pitch.n}, voiced: ${voicedCount}, dx=${analysis.pitch.dx.toFixed(4)}`);
-    console.log(`  HNR=${analysis.hnrMean.toFixed(2)}, jitter=${analysis.jitter.toFixed(4)}, dur=${analysis.duration.toFixed(3)}s`);
+    console.log(`  HNR=${analysis.hnrMean.toFixed(2)}, dur=${analysis.duration.toFixed(3)}s`);
 
     const features = extractFeatures(analysis, normalizer);
     if (!features.voiced) {

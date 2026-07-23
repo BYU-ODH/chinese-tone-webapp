@@ -45,6 +45,7 @@ export class SpeakerNormalizer {
     this.count = 0;             // total accumulated weight (frames)
     this.utteranceCount = 0;    // utterances that contributed frames
     this.tonesSeen = new Set(); // distinct target tones practiced
+    this.minRangeSemitones = 6; // trust-gate bar; lowered by markCalibrated()
   }
 
   /**
@@ -111,16 +112,29 @@ export class SpeakerNormalizer {
    * and relies on shape only.
    *
    * Gate: ≥4 utterances AND ≥2 distinct practiced tones AND a robust
-   * spread (P90−P10) over 6 ST. The tone-diversity requirement matters
-   * because drilling one word — the normal use pattern — centers the
-   * estimate on that tone's own range, which would systematically punish
-   * correct productions (e.g., drilled T1 measures c0≈0 against a target
-   * of +5).
+   * spread (P90−P10) over minRangeSemitones (6 ST by default). The
+   * tone-diversity requirement matters because drilling one word — the
+   * normal use pattern — centers the estimate on that tone's own range,
+   * which would systematically punish correct productions (e.g., drilled
+   * T1 measures c0≈0 against a target of +5).
    */
   isRegisterTrusted () {
     return this.utteranceCount >= 4
       && this.tonesSeen.size >= 2
-      && this.rangeSemitones() > 6;
+      && this.rangeSemitones() > this.minRangeSemitones;
+  }
+
+  /**
+   * Lower the trust-gate's range bar for a normalizer that just completed
+   * explicit calibration (one utterance per tone, by construction) rather
+   * than passive accumulation. The 6ST default is mainly a proxy for
+   * tone-diversity, which explicit calibration already guarantees
+   * structurally — a lower bar here is a reasonable placeholder, NOT YET
+   * validated against real calibration recordings (see
+   * DISCUSSION_REMINDERS.md).
+   */
+  markCalibrated (minRangeSemitones = 3) {
+    this.minRangeSemitones = minRangeSemitones;
   }
 
   /** Reference log2-Hz to use for normalization. */
@@ -247,12 +261,15 @@ const SPEECH_EDGE_QUIET_DB = 15;  // ...but only clipped if ALSO this far below 
                                   // voiced consonants: low HNR yet loud). NaN HNR clips regardless.
 
 /**
- * Extract features from a Praat analysis. Always returns a struct, but
- * .voiced=false signals the analysis was unreliable (caller should not
- * score it; UI should say "couldn't hear that").
+ * Whole-utterance prep shared by every syllable in a recording: locate the
+ * clipped speech span (see findSpeechSpan) and bridge short voicing
+ * dropouts once, so segmentSyllables() and each per-syllable
+ * extractSyllableFeatures() call work from the same cleaned contour rather
+ * than repeating this per syllable. speechSpan is null when the clip has
+ * no voiced frames at all.
  */
-export function extractFeatures (analysis, normalizer) {
-  const { pitch, intensity, harmonicity, hnrMean, jitter, duration } = analysis;
+export function prepUtterance (analysis) {
+  const { pitch, intensity, harmonicity, hnrMean, duration } = analysis;
   const N = pitch.n;
   const t0 = pitch.x1;
   const dx = pitch.dx;
@@ -272,31 +289,61 @@ export function extractFeatures (analysis, normalizer) {
     }
   }
 
-  // Clip leading/trailing non-speech (breath, clicks, edge noise) before the
-  // span is used anywhere. This tightens firstV/lastV around the actual speech;
-  // see findSpeechSpan. On clean recordings it trims only a few edge frames; on
-  // noisy ones it removes the pitched-noise/breath tails Praat tracked as voiced.
+  let rawSpan = null;
+  let speechSpan = null;
+  let hz = rawHz;
   if (firstV >= 0) {
-    const span = findSpeechSpan(intensity, harmonicity, t0, dx, firstV, lastV);
-    firstV = span.start;
-    lastV = span.end;
+    rawSpan = { start: firstV, end: lastV };
+
+    // Clip leading/trailing non-speech (breath, clicks, edge noise) — see
+    // findSpeechSpan. It's anchored on a SINGLE loudness peak, so it's only
+    // a valid scoring span for a monosyllable: a genuine multi-syllable
+    // utterance has more than one loud region, and this would incorrectly
+    // truncate everything past the first inter-syllable dip. Multi-syllable
+    // callers (utterance.js) must segment within rawSpan, not this.
+    speechSpan = findSpeechSpan(intensity, harmonicity, t0, dx, firstV, lastV);
+
+    // Bridge short voicing dropouts once, over the full raw span (a strict
+    // superset of speechSpan, so this is zero-regression for the
+    // monosyllable wrapper below, which only ever reads within speechSpan).
+    // Praat's tracker routinely drops 1–4 frames in creaky T3 dips and at
+    // register transitions; without bridging the contour shatters and the
+    // fit misses the dip entirely. Gaps longer than MAX_BRIDGE_GAP_SEC are
+    // preserved (likely real silence).
+    const maxBridgeFrames = Math.max(1, Math.round(MAX_BRIDGE_GAP_SEC / dx));
+    hz = bridgeShortNaNRuns(rawHz, rawSpan.start, rawSpan.end, maxBridgeFrames);
   }
 
-  // Count originally-voiced frames WITHIN the clipped span. Kept for the
+  return { intensity, harmonicity, hnrMean, duration, t0, dx, rawHz, hz, rawSpan, speechSpan, rawVoicedCount };
+}
+
+/**
+ * Extract tone features for one syllable span within a prepped utterance
+ * (see prepUtterance). `span` is {start,end} inclusive frame indices into
+ * the pitch grid — pass prep.speechSpan itself for a monosyllable (see
+ * extractFeatures). Always returns a struct, but .voiced=false signals
+ * this span was unreliable (caller should not score it; UI should say
+ * "couldn't hear that").
+ *
+ * Known v1 simplification: the low-HNR gate below reuses hnrMean, Praat's
+ * single whole-clip harmonicity average — identical for every syllable in
+ * one utterance, not recomputed per span. Fine for today's monosyllable
+ * caller (there's only one span); for multi-syllable it means one bad
+ * syllable's noise can't be told apart from another's using this gate
+ * alone. Escalate to a per-span HNR average only if this proves to matter
+ * in practice (see DISCUSSION_REMINDERS.md) — not built speculatively.
+ */
+export function extractSyllableFeatures (prep, span, normalizer) {
+  const { intensity, harmonicity, hnrMean, duration, t0, dx, rawHz, hz } = prep;
+  const { start, end } = span;
+
+  // Count originally-voiced frames WITHIN this span. Kept for the
   // confidence gate (so bridging alone can't carry an analysis) and as the
   // voiced-duration proxy the classifier uses.
   let voicedCount = 0;
-  for (let i = firstV; i <= lastV && i >= 0; i++) {
+  for (let i = start; i <= end; i++) {
     if (Number.isFinite(rawHz[i]) && rawHz[i] > 0) voicedCount++;
   }
-
-  // Bridge short voicing dropouts inside the voiced span. Praat's tracker
-  // routinely drops 1–4 frames in creaky T3 dips and at register
-  // transitions; without bridging the contour shatters and the fit
-  // misses the dip entirely. Gaps longer than MAX_BRIDGE_GAP_SEC are
-  // preserved (likely real silence).
-  const maxBridgeFrames = Math.max(1, Math.round(MAX_BRIDGE_GAP_SEC / dx));
-  const hz = bridgeShortNaNRuns(rawHz, firstV, lastV, maxBridgeFrames);
 
   // Confidence gate: too little voiced signal, refuse to score.
   if (voicedCount < MIN_VOICED_FRAMES) {
@@ -305,8 +352,7 @@ export function extractFeatures (analysis, normalizer) {
       reason: voicedCount === 0 ? 'no-voice' : 'too-short-voiced',
       voicedFrameCount: voicedCount,
       duration,
-      hnrMean,
-      jitter
+      hnrMean
     };
   }
   if (hnrMean !== -99 && hnrMean < MIN_HNR_FOR_SCORING) {
@@ -315,8 +361,7 @@ export function extractFeatures (analysis, normalizer) {
       reason: 'low-hnr',
       voicedFrameCount: voicedCount,
       duration,
-      hnrMean,
-      jitter
+      hnrMean
     };
   }
 
@@ -330,7 +375,7 @@ export function extractFeatures (analysis, normalizer) {
   const voicedTimes = [];
   const voicedDb = [];
   const voicedHnr = [];
-  for (let i = firstV; i <= lastV; i++) {
+  for (let i = start; i <= end; i++) {
     if (Number.isFinite(hz[i]) && hz[i] > 0) {
       const t = t0 + i * dx;
       voicedHz.push(hz[i]);
@@ -346,13 +391,12 @@ export function extractFeatures (analysis, normalizer) {
       reason: 'too-short-voiced',
       voicedFrameCount: voicedCount,
       duration,
-      hnrMean,
-      jitter
+      hnrMean
     };
   }
 
   // Median Hz, used as fallback when no calibration reference exists. Computed
-  // over the full voiced span so the median fallback and display contour reflect
+  // over this span so the median fallback and display contour reflect
   // everything that was heard, not just the nucleus.
   const sorted = [...voicedHz].sort((a, b) => a - b);
   const medianHz = sorted[sorted.length >> 1];
@@ -391,18 +435,11 @@ export function extractFeatures (analysis, normalizer) {
   const onset = mean(onsetSlice);
   const offset = mean(offsetSlice);
 
-  // Intensity contour summary.
-  const intVals = intensity.values.filter(v => Number.isFinite(v));
-  const intMean = mean(intVals);
-  const intStartV = mean(sliceFraction(intVals, 0, 0.2));
-  const intEndV = mean(sliceFraction(intVals, 0.8, 1));
-  const intSlope = (intEndV - intStartV) / Math.max(0.05, voicedDur);
-
   // Display contour: dense, with NaN gaps preserved, in normalized units.
   const refLog = normalizer.referenceLogF0(medianHz);
   const displayTimes = [];
   const displayValues = [];
-  for (let i = firstV; i <= lastV; i++) {
+  for (let i = start; i <= end; i++) {
     displayTimes.push(t0 + i * dx);
     if (Number.isFinite(hz[i]) && hz[i] > 0) {
       displayValues.push(12 * (Math.log2(hz[i]) - refLog));
@@ -425,7 +462,6 @@ export function extractFeatures (analysis, normalizer) {
     voiced: true,
     registerTrusted,
     voicedFrameCount: voicedCount,
-    rawVoicedFrameCount: rawVoicedCount,   // before speech-span endpointing
     vowelCoreFrames: core.end - core.start,
     voicedDuration: voicedDur,
     duration,
@@ -433,15 +469,29 @@ export function extractFeatures (analysis, normalizer) {
     coefs,                    // [c0, c1, c2, c3]
     onset,
     offset,
-    intMean,
-    intSlope,
     hnrMean,
-    jitter,
     displayTimes,
     displayValues,
     voicedHz,                 // all voiced Hz, raw
     referenceFrames           // filtered subset for normalizer.add()
   };
+}
+
+/**
+ * Extract features from a Praat analysis for a single monosyllabic
+ * recording — a thin wrapper around prepUtterance + extractSyllableFeatures
+ * over the whole speech span. Always returns a struct, but .voiced=false
+ * signals the analysis was unreliable (caller should not score it; UI
+ * should say "couldn't hear that").
+ */
+export function extractFeatures (analysis, normalizer) {
+  const prep = prepUtterance(analysis);
+  if (!prep.speechSpan) {
+    return { voiced: false, reason: 'no-voice', voicedFrameCount: 0, duration: prep.duration, hnrMean: prep.hnrMean };
+  }
+  const f = extractSyllableFeatures(prep, prep.speechSpan, normalizer);
+  if (!f.voiced) return f;
+  return { ...f, rawVoicedFrameCount: prep.rawVoicedCount };
 }
 
 /**
@@ -483,7 +533,7 @@ function filterReferenceFrames (hz, db) {
  * Linear interpolation of a Praat sampled block ({n,dx,x1,values}) at time t.
  * Returns NaN for a missing/empty block so callers degrade gracefully.
  */
-function sampleBlockAt (blk, t) {
+export function sampleBlockAt (blk, t) {
   if (!blk) return NaN;
   const { n, dx, x1, values } = blk;
   if (n <= 0 || !(dx > 0)) return NaN;
@@ -526,7 +576,7 @@ function sampleBlockAt (blk, t) {
  * the harmonicity block is absent (older/synthetic input) HNR reads NaN and
  * stage 2 would erode everything, so it's skipped — stage 1 alone still trims.
  */
-function findSpeechSpan (intensity, harmonicity, t0, dx, firstV, lastV) {
+export function findSpeechSpan (intensity, harmonicity, t0, dx, firstV, lastV) {
   const n = lastV - firstV + 1;
   if (n <= MIN_VOICED_FRAMES) return { start: firstV, end: lastV };
 
@@ -686,7 +736,7 @@ function bridgeShortNaNRuns (hz, first, last, maxRun) {
   return out;
 }
 
-function movingAverage (xs, w) {
+export function movingAverage (xs, w) {
   const half = w >> 1;
   const out = new Array(xs.length);
   for (let i = 0; i < xs.length; i++) {

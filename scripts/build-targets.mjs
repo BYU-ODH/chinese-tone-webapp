@@ -171,7 +171,6 @@ for (const f of files) {
     intensity: analysis.intensity,
     harmonicity: analysis.harmonicity,
     hnrMean: analysis.hnrMean,
-    jitter: analysis.jitter,
     duration: analysis.duration
   });
 }
@@ -191,7 +190,7 @@ for (const ff of fileFeatures) {
   // Provide a normalizer the extractFeatures pipeline will see as trusted.
   const feats = extractFeatures(
     { pitch: ff.pitch, intensity: ff.intensity, harmonicity: ff.harmonicity,
-      hnrMean: ff.hnrMean, jitter: ff.jitter, duration: ff.duration },
+      hnrMean: ff.hnrMean, duration: ff.duration },
     norm
   );
   if (!feats.voiced) continue;

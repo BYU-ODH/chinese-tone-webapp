@@ -1,2 +1,7 @@
 tone_perfect/
 .tone-cache/
+
+# Dated real-recording drops (named individuals) — research data, not for
+# redistribution. Mirrors tone_perfect/'s treatment: evaluated locally, never
+# committed. If future drops use a different prefix, extend this pattern.
+ToneAudio_*/

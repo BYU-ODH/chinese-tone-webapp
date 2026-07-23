@@ -4,7 +4,7 @@
  * - Boots praat-wasm in a Web Worker (loaded from CDN via a same-origin
  *   bootstrap blob to satisfy the Worker same-origin requirement).
  * - For each recording, runs a single Praat script that emits structured
- *   key/value output for pitch, intensity, HNR, jitter, and duration.
+ *   key/value output for pitch, intensity, HNR, and duration.
  *
  * Parameters are tuned for tone analysis across child and adult voices:
  *   pitch floor 75 Hz   (catches T3 dips that can drop into the 90–110 Hz

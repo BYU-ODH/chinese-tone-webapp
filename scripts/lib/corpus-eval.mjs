@@ -45,7 +45,7 @@ const ROOT = join(__dirname, '..', '..');
  * pre-classification features, so tuning classifier.js reuses the cache and
  * re-scores in seconds — the whole point of the split.)
  */
-export const FEATURE_CACHE_VERSION = 2;
+export const FEATURE_CACHE_VERSION = 4;
 
 export const SPEAKERS = ['FV1', 'FV2', 'FV3', 'MV1', 'MV2', 'MV3'];
 

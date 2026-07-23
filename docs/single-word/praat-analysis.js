@@ -11,6 +11,10 @@
  *   voicing threshold 0.30 (default 0.45 routinely drops creaky T3 frames
  *                           and breaks the contour mid-syllable)
  *   silence threshold 0.01 (default 0.03 cuts low-energy creaky regions)
+ *
+ * Does NOT compute jitter: it was parsed into the output struct but never
+ * consumed by classify()/app.js/viz.js — pure latency (a full PointProcess +
+ * period-counting pass) for zero downstream signal. Dropped 2026-07-22.
  */
 
 /**
@@ -108,23 +112,6 @@ endfor
 appendInfoLine: "endvalues"
 removeObject: hnrId
 
-# --- Jitter (local) via PointProcess ---
-selectObject: ${soundId}
-To PointProcess (periodic, cc): 75, 600
-ppId = selected("PointProcess")
-nPeriods = Get number of periods: 0, 0, 0.0001, 0.02, 1.3
-if nPeriods >= 2
-    jitter = Get jitter (local): 0, 0, 0.0001, 0.02, 1.3
-    if jitter = undefined
-        appendInfoLine: "JITTER -1"
-    else
-        appendInfoLine: "JITTER ", fixed$(jitter, 6)
-    endif
-else
-    appendInfoLine: "JITTER -1"
-endif
-removeObject: ppId
-
 appendInfoLine: "END"
 `;
 }
@@ -141,8 +128,7 @@ export function parseAnalysisOutput (text) {
     pitch: { n: 0, dx: 0, x1: 0, values: [] },
     intensity: { n: 0, dx: 0, x1: 0, values: [] },
     harmonicity: { n: 0, dx: 0, x1: 0, values: [] },
-    hnrMean: -99,
-    jitter: -1
+    hnrMean: -99
   };
 
   let mode = null;       // current block: 'PITCH' | 'INTENSITY' | 'HARMONICITY' | null
@@ -185,7 +171,6 @@ export function parseAnalysisOutput (text) {
     if (key === 'DURATION') out.duration = num;
     else if (key === 'SAMPLERATE') out.sampleRate = num;
     else if (key === 'HNR_MEAN') out.hnrMean = num;
-    else if (key === 'JITTER') out.jitter = num;
   }
 
   return out;

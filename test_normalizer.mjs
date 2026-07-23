@@ -48,8 +48,7 @@ function makeAnalysis (f0fn, dur = 0.4, dbFn = () => 70, hnrFn = () => 15) {
     pitch: { n, dx: DX, x1: DX / 2, values: pv },
     intensity: { n, dx: DX, x1: DX / 2, values: iv },
     harmonicity: { n, dx: DX, x1: DX / 2, values: hv },
-    hnrMean,
-    jitter: 0.01
+    hnrMean
   };
 }
 
@@ -250,6 +249,23 @@ console.log('\n--- 7. Endpointing: leading/trailing non-speech is clipped ---');
   const clean = extractFeatures(makeAnalysis(f0fn, dur), new SpeakerNormalizer());
   check(clean.voicedFrameCount >= nFrames - 1,
     `clean vowel keeps the whole span (${clean.voicedFrameCount}/${nFrames} frames, no false clipping)`);
+}
+
+console.log('\n--- 8. markCalibrated(): lowers the trust-gate bar for calibration-derived data ---');
+{
+  // A speaker whose ma1..ma4 span is narrow (e.g. flat/reserved delivery)
+  // — not narrow enough to matter for any single tone's scoring, but
+  // narrow enough that four passively-accumulated utterances would not
+  // clear the default 6ST bar.
+  const narrow = { 1: (u) => st(2), 2: (u) => st(3 * u), 3: (u) => st(-2 + 0.5 * Math.sin(Math.PI * u)), 4: (u) => st(2 - 3 * u) };
+  const norm = new SpeakerNormalizer();
+  for (const tone of [1, 2, 3, 4]) utter(norm, tone, narrow[tone]);
+
+  check(!norm.isRegisterTrusted(),
+    `narrow-range calibration set (${norm.rangeSemitones().toFixed(1)}ST) does not clear the default 6ST bar`);
+  norm.markCalibrated();
+  check(norm.isRegisterTrusted(),
+    `same data clears the lowered post-calibration bar (${norm.rangeSemitones().toFixed(1)}ST > ${norm.minRangeSemitones}ST)`);
 }
 
 /* ------------------------------------------------------------------ */
