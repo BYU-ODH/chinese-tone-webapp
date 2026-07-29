@@ -11,6 +11,16 @@
  *   const { wav, sampleRate, durationSec } = await rec.stop();
  *   const level = rec.getMicLevel();   // 0..1, smoothed RMS
  *   rec.dispose();
+ *
+ * echoCancellation/noiseSuppression/autoGainControl default to false —
+ * the production app (app.js) has always called createRecorder() with no
+ * args, relying on these defaults, with zero explanatory comment anywhere
+ * in git history for why (flagged in DISCUSSION_REMINDERS.md; likely
+ * deliberate, since these DSP paths can distort pitch tracking, but
+ * unconfirmed). Parameterized here for Stage 2 Track A: a live-browser
+ * paired A/B (see audio-ab-test.html) comparing constraints on vs. off
+ * through the unmodified analysis pipeline, to resolve this with a
+ * measurement instead of an assumption.
  */
 
 const WORKLET_SOURCE = `
@@ -38,7 +48,11 @@ class RecorderProcessor extends AudioWorkletProcessor {
 registerProcessor('recorder-processor', RecorderProcessor);
 `;
 
-export async function createRecorder () {
+export async function createRecorder ({
+  echoCancellation = false,
+  noiseSuppression = false,
+  autoGainControl = false
+} = {}) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('Microphone API unavailable in this browser.');
   }
@@ -46,9 +60,9 @@ export async function createRecorder () {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false
+      echoCancellation,
+      noiseSuppression,
+      autoGainControl
     }
   });
 

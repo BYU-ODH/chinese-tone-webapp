@@ -605,5 +605,581 @@
       }
     },
     "notes": "Full 248-clip single-word corpus, paired vs the SAME clips baseline row. Noisy: 31.6%->44.9% (+13.3pp). Quiet: 63.7%->63.2% (-0.5pp, no regression). Pipeline: ffmpeg decode -> 48kHz Float32 PCM -> @shiguredo/rnnoise-wasm frame-by-frame denoise (fresh DenoiseState per clip) -> encodeWav -> unmodified praat.readAudio->extractFeatures->classify. WASM payload ~4.8MB (rnnoise.js, wasm inlined) -- a decision-gate input now that the accuracy delta is known, not yet a size veto."
+  },
+  {
+    "timestamp": "2026-07-23T20:34:04.381Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 33,
+      "skipped": 1,
+      "total": 34
+    },
+    "overall": {
+      "correct": 19,
+      "total": 33,
+      "pct": 0.5757575757575758
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:34:04.462Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 26,
+      "skipped": 8,
+      "total": 34
+    },
+    "overall": {
+      "correct": 13,
+      "total": 26,
+      "pct": 0.5
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:42:26.953Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 131,
+      "total": 244,
+      "pct": 0.5368852459016393
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:42:27.027Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 206,
+      "skipped": 42,
+      "total": 248
+    },
+    "overall": {
+      "correct": 100,
+      "total": 206,
+      "pct": 0.4854368932038835
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:45:50.599Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 131,
+      "total": 244,
+      "pct": 0.5368852459016393
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:45:50.662Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 230,
+      "skipped": 18,
+      "total": 248
+    },
+    "overall": {
+      "correct": 118,
+      "total": 230,
+      "pct": 0.5130434782608696
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:46:09.356Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 131,
+      "total": 244,
+      "pct": 0.5368852459016393
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:46:09.419Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 234,
+      "skipped": 14,
+      "total": 248
+    },
+    "overall": {
+      "correct": 123,
+      "total": 234,
+      "pct": 0.5256410256410257
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:53:54.485Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 33,
+      "skipped": 1,
+      "total": 34
+    },
+    "overall": {
+      "correct": 19,
+      "total": 33,
+      "pct": 0.5757575757575758
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:53:54.560Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (naive threshold=0.5)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 26,
+      "skipped": 8,
+      "total": 34
+    },
+    "overall": {
+      "correct": 13,
+      "total": 26,
+      "pct": 0.5
+    }
+  },
+  {
+    "timestamp": "2026-07-23T20:53:54.608Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (FrameProcessor hysteresis)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 18,
+      "skipped": 16,
+      "total": 34
+    },
+    "overall": {
+      "correct": 10,
+      "total": 18,
+      "pct": 0.5555555555555556
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:02:33.643Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 131,
+      "total": 244,
+      "pct": 0.5368852459016393
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:02:33.714Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (naive threshold=0.5)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 206,
+      "skipped": 42,
+      "total": 248
+    },
+    "overall": {
+      "correct": 100,
+      "total": 206,
+      "pct": 0.4854368932038835
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:02:33.763Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (FrameProcessor hysteresis)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 147,
+      "skipped": 101,
+      "total": 248
+    },
+    "overall": {
+      "correct": 68,
+      "total": 147,
+      "pct": 0.46258503401360546
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:50:32.580Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 33,
+      "skipped": 1,
+      "total": 34
+    },
+    "overall": {
+      "correct": 19,
+      "total": 33,
+      "pct": 0.5757575757575758
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:50:32.640Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (naive threshold=0.5)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 26,
+      "skipped": 8,
+      "total": 34
+    },
+    "overall": {
+      "correct": 13,
+      "total": 26,
+      "pct": 0.5
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:50:32.696Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (ricky0123 defaults)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 18,
+      "skipped": 16,
+      "total": 34
+    },
+    "overall": {
+      "correct": 10,
+      "total": 18,
+      "pct": 0.5555555555555556
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:50:32.744Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (short-duration (same 0.3/0.25 thresholds, ~1/5 the durations))",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 31,
+      "skipped": 3,
+      "total": 34
+    },
+    "overall": {
+      "correct": 14,
+      "total": 31,
+      "pct": 0.45161290322580644
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:50:32.798Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (short-duration + lower thresholds (0.2/0.15, matches naive-cut sweep))",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 33,
+      "skipped": 1,
+      "total": 34
+    },
+    "overall": {
+      "correct": 18,
+      "total": 33,
+      "pct": 0.5454545454545454
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:50:32.855Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (shortest-duration + lower thresholds)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 33,
+      "skipped": 1,
+      "total": 34
+    },
+    "overall": {
+      "correct": 17,
+      "total": 33,
+      "pct": 0.5151515151515151
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:58:55.103Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 244,
+      "skipped": 4,
+      "total": 248
+    },
+    "overall": {
+      "correct": 131,
+      "total": 244,
+      "pct": 0.5368852459016393
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:58:55.191Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (naive threshold=0.5)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 206,
+      "skipped": 42,
+      "total": 248
+    },
+    "overall": {
+      "correct": 100,
+      "total": 206,
+      "pct": 0.4854368932038835
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:58:55.243Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (ricky0123 defaults)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 147,
+      "skipped": 101,
+      "total": 248
+    },
+    "overall": {
+      "correct": 68,
+      "total": 147,
+      "pct": 0.46258503401360546
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:58:55.291Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (short-duration (same 0.3/0.25 thresholds, ~1/5 the durations))",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 235,
+      "skipped": 13,
+      "total": 248
+    },
+    "overall": {
+      "correct": 122,
+      "total": 235,
+      "pct": 0.5191489361702127
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:58:55.338Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (short-duration + lower thresholds (0.2/0.15, matches naive-cut sweep))",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 239,
+      "skipped": 9,
+      "total": 248
+    },
+    "overall": {
+      "correct": 132,
+      "total": 239,
+      "pct": 0.5523012552301255
+    }
+  },
+  {
+    "timestamp": "2026-07-23T21:58:55.392Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (shortest-duration + lower thresholds)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 243,
+      "skipped": 5,
+      "total": 248
+    },
+    "overall": {
+      "correct": 135,
+      "total": 243,
+      "pct": 0.5555555555555556
+    }
+  },
+  {
+    "timestamp": "2026-07-23T22:01:30.111Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: baseline (findSpeechSpan)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 17,
+      "skipped": 1,
+      "total": 18
+    },
+    "overall": {
+      "correct": 10,
+      "total": 17,
+      "pct": 0.5882352941176471
+    }
+  },
+  {
+    "timestamp": "2026-07-23T22:01:30.210Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: Silero VAD span (naive threshold=0.5)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 15,
+      "skipped": 3,
+      "total": 18
+    },
+    "overall": {
+      "correct": 7,
+      "total": 15,
+      "pct": 0.4666666666666667
+    }
+  },
+  {
+    "timestamp": "2026-07-23T22:01:30.262Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (ricky0123 defaults)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 10,
+      "skipped": 8,
+      "total": 18
+    },
+    "overall": {
+      "correct": 6,
+      "total": 10,
+      "pct": 0.6
+    }
+  },
+  {
+    "timestamp": "2026-07-23T22:01:30.313Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (short-duration (same 0.3/0.25 thresholds, ~1/5 the durations))",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 16,
+      "skipped": 2,
+      "total": 18
+    },
+    "overall": {
+      "correct": 9,
+      "total": 16,
+      "pct": 0.5625
+    }
+  },
+  {
+    "timestamp": "2026-07-23T22:01:30.363Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (short-duration + lower thresholds (MONOSYLLABLE_HYSTERESIS_OPTIONS))",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 17,
+      "skipped": 1,
+      "total": 18
+    },
+    "overall": {
+      "correct": 11,
+      "total": 17,
+      "pct": 0.6470588235294118
+    }
+  },
+  {
+    "timestamp": "2026-07-23T22:01:30.419Z",
+    "gitCommit": "b94e07b",
+    "gitDirty": true,
+    "label": "silero-vad-experiment: hysteresis (shortest-duration + lower thresholds)",
+    "corpus": "toneaudio-single",
+    "featureCacheVersion": null,
+    "sampleSize": {
+      "scored": 17,
+      "skipped": 1,
+      "total": 18
+    },
+    "overall": {
+      "correct": 10,
+      "total": 17,
+      "pct": 0.5882352941176471
+    }
   }
 ]

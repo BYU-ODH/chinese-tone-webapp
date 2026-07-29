@@ -1,0 +1,55 @@
+/* Overrides/additions for audio-ab-test.html only — app.css supplies the
+ * shared card/button/badge/mic-meter styles this reuses as-is. */
+
+main { max-width: 980px; }
+
+.field { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; }
+.field select { padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid var(--border); }
+
+.ab-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin: 1rem 0;
+}
+@media (max-width: 720px) {
+  .ab-columns { grid-template-columns: 1fr; }
+}
+
+.ab-col h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.ab-col h3 .sub { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+
+.ab-result {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  min-height: 1.2rem;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ab-result.gate-fail { border-color: var(--bad); }
+.ab-result.verdict-good { border-color: var(--good); }
+.ab-result.verdict-close { border-color: var(--close); }
+.ab-result.verdict-bad { border-color: var(--bad); }
+
+#summary-body { font-size: 0.9rem; margin-bottom: 0.75rem; }
+#summary-body table { border-collapse: collapse; margin: 0.4rem 0; }
+#summary-body td, #summary-body th { padding: 0.15rem 0.6rem; text-align: right; }
+#summary-body th:first-child, #summary-body td:first-child { text-align: left; }
+
+#trials-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+#trials-table th, #trials-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+#trials-table th { color: var(--muted); font-weight: 600; }

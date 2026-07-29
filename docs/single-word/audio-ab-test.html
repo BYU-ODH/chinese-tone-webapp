@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<title>Stage 2 Track A — mic constraints A/B</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="audio-ab-test.css">
+</head>
+<body>
+
+<header>
+  <h1>Mic constraints A/B (Stage 2 Track A)</h1>
+  <div id="engine-status" class="engine-status loading">Loading analyzer…</div>
+</header>
+
+<main>
+
+  <section class="card">
+    <h2>What this is</h2>
+    <p>
+      The production app always records with <code>echoCancellation</code>,
+      <code>noiseSuppression</code>, and <code>autoGainControl</code> all
+      disabled — undocumented, likely deliberate (these DSP paths can
+      distort pitch tracking), but unconfirmed. Recording the same word
+      twice (once per constraint setting) would confound the comparison
+      with ordinary utterance-to-utterance variation — timing, loudness,
+      pitch — so instead this page opens <strong>two concurrent mic
+      streams, one per constraint setting, and captures both from the
+      SAME single recording gesture</strong>: you say the word once, and
+      both DSP configurations process that one utterance in parallel.
+      Both resulting takes run through <strong>the exact unmodified
+      scoring pipeline</strong> (denoise → Praat analysis → feature
+      extraction → classifier), so you can see the gate pass/fail, the
+      fitted pitch coefficients, and the verdict side by side with no
+      variable but the constraint setting itself differing between them.
+    </p>
+    <p>
+      Run a batch in a quiet room, then run another batch with deliberate
+      background noise (TV, fan, talking) — tag each batch below so the
+      results split by condition, matching Track B/C's Noisy vs. Quiet
+      framing.
+    </p>
+  </section>
+
+  <section id="setup" class="card">
+    <h2>Session setup</h2>
+    <label class="field">
+      Condition tag for this batch:
+      <select id="condition-select">
+        <option value="Quiet">Quiet</option>
+        <option value="Noisy">Noisy</option>
+      </select>
+    </label>
+  </section>
+
+  <section id="trial" class="card hidden">
+    <div class="word-row">
+      <button id="prev-word" class="nav-btn" type="button" aria-label="Previous word">‹</button>
+      <div class="word-display" id="word-display">
+        <span class="hanzi" id="word-hanzi">妈</span>
+        <span class="pinyin" id="word-pinyin">mā</span>
+        <span class="gloss" id="word-gloss">mother</span>
+      </div>
+      <button id="next-word" class="nav-btn" type="button" aria-label="Next word">›</button>
+    </div>
+
+    <div class="controls">
+      <button id="record-both" class="record-btn" disabled>
+        <span class="dot"></span>
+        <span class="label">Hold to record (captures both arms at once)</span>
+      </button>
+    </div>
+
+    <div id="mic-meter-both" class="mic-meter" aria-hidden="true"><div></div></div>
+
+    <div class="ab-columns">
+      <div class="ab-col">
+        <h3>OFF <span class="sub">(constraints off — today's default)</span></h3>
+        <button id="play-off" class="ghost-btn" type="button" disabled>Play</button>
+        <div id="result-off" class="ab-result"></div>
+      </div>
+      <div class="ab-col">
+        <h3>ON <span class="sub">(echoCancellation/noiseSuppression/autoGainControl on)</span></h3>
+        <button id="play-on" class="ghost-btn" type="button" disabled>Play</button>
+        <div id="result-on" class="ab-result"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="commit-trial" class="ghost-btn" type="button" disabled>Save this pair &amp; next word</button>
+    </div>
+  </section>
+
+  <section id="summary" class="card hidden">
+    <h2>Running summary</h2>
+    <div id="summary-body"></div>
+    <table id="trials-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Condition</th><th>Word</th>
+          <th>OFF gate</th><th>OFF verdict</th><th>OFF coefs</th>
+          <th>ON gate</th><th>ON verdict</th><th>ON coefs</th>
+        </tr>
+      </thead>
+      <tbody id="trials-body"></tbody>
+    </table>
+    <div class="controls">
+      <button id="copy-json" class="ghost-btn" type="button">Copy results as JSON</button>
+      <button id="download-json" class="ghost-btn" type="button">Download JSON</button>
+    </div>
+  </section>
+
+  <section id="error-panel" class="card error-panel hidden" aria-live="polite">
+    <h2>Something went wrong</h2>
+    <p id="error-message"></p>
+  </section>
+
+</main>
+
+<script type="module" src="audio-ab-test.js"></script>
+</body>
+</html>
