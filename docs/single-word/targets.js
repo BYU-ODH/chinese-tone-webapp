@@ -69,8 +69,18 @@ let LOADED = null;
 /**
  * Fetch and cache `targets.json`. Returns the parsed corpus map (or
  * an empty object if missing or unparsable). Safe to call repeatedly.
+ *
+ * The default URL is resolved against THIS MODULE, not against the calling
+ * page (`import.meta.url`, not './targets.json'). That matters because the
+ * fallback on a failed fetch is silent by design — every band quietly
+ * becomes the canonical shape — so a page-relative default fails invisibly
+ * for any caller not sitting in this directory. It did exactly that for
+ * docs/multi-syllable/, which requested /multi-syllable/targets.json, got a
+ * 404, and reported itself Ready with zero corpus targets loaded. Module-
+ * relative resolution is also what lets the phrase component be embedded in
+ * a host app at any path without the host passing anything in.
  */
-export async function loadTargets (url = './targets.json') {
+export async function loadTargets (url = new URL('./targets.json', import.meta.url).href) {
   if (LOADED !== null) return LOADED;
   try {
     const res = await fetch(url);

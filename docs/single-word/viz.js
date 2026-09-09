@@ -219,20 +219,105 @@ export function render (canvas, target, features) {
   drawAxes(ctx, w, h);
   if (target) drawTargetBand(ctx, target.tone, target.coefs, w, h);
   if (features && features.voiced && target) {
-    let yShift = 0;
-    if (!features.registerTrusted) {
-      let s = 0;
-      let n = 0;
-      for (const v of features.displayValues) {
-        if (Number.isFinite(v)) { s += v; n++; }
-      }
-      if (n > 0) yShift = targetMeanFromCoefs(target.coefs) - s / n;
-    }
-    drawLearnerContour(ctx, features.displayTimes, features.displayValues, yShift, w, h);
+    drawLearnerContour(ctx, features.displayTimes, features.displayValues,
+      contourShift(features, target.coefs), w, h);
   }
+}
+
+/**
+ * How far to slide the learner's contour vertically before drawing.
+ *
+ * Until the speaker reference is trusted, the contour is recentered so the
+ * picture is a pure SHAPE comparison — matching what the classifier scores.
+ * Pass coefs = null (a neutral-tone syllable, which has no target band) to
+ * center on the speaker mean line instead of a band mean.
+ */
+function contourShift (features, coefs) {
+  if (features.registerTrusted) return 0;
+  let s = 0;
+  let n = 0;
+  for (const v of features.displayValues) {
+    if (Number.isFinite(v)) { s += v; n++; }
+  }
+  if (n === 0) return 0;
+  return (coefs ? targetMeanFromCoefs(coefs) : 0) - s / n;
 }
 
 /** Show only the target band — used while idle, before any recording. */
 export function renderTargetOnly (canvas, target) {
   render(canvas, target, null);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Multi-syllable                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Render one small canvas per syllable of a multi-syllable utterance.
+ *
+ * Deliberately N separate canvases reusing render()'s exact drawing path,
+ * rather than one wide canvas with multi-segment x-axis logic: each syllable
+ * then keeps the same normalized 0..1 x-axis and fixed semitone y-axis the
+ * single-word app already uses, so a syllable in a phrase and the same
+ * syllable drilled alone are drawn identically and are visually comparable.
+ * It also means there is no new geometry code to get wrong.
+ *
+ * Canvas ELEMENTS are owned here (created and reused in place) because their
+ * count varies per phrase and their DPR sizing already lives in this file;
+ * everything else about the per-syllable UI — chips, labels, verdict colors —
+ * stays with the caller, which is what keeps this module presentation-free.
+ *
+ * @param {HTMLElement} container  emptied/reused; gets one <canvas> per entry
+ * @param {Array<{tone:number, coefs:number[]|null, features:object|null,
+ *   neutral?:boolean}|null>} entries  in syllable order. A neutral entry (or
+ *   one with coefs null) draws axes + contour but NO target band — there is
+ *   no validated neutral-tone target to aim at (see classifier.js's tone-0
+ *   guard), so drawing one would invite the learner to match a guess.
+ * @returns {HTMLCanvasElement[]} the canvases, in order, so a caller can
+ *   attach its own labels or measure positions.
+ */
+export function renderUtterance (container, entries) {
+  const canvases = ensureCanvases(container, entries.length);
+  entries.forEach((e, i) => {
+    const canvas = canvases[i];
+    if (!e) { render(canvas, null, null); return; }
+    const band = (e.neutral || !e.coefs) ? null : { tone: e.tone, coefs: e.coefs };
+    if (band) {
+      render(canvas, band, e.features);
+      return;
+    }
+    // No band: draw axes and (if we have one) the contour, centered on the
+    // speaker mean rather than on a band that doesn't exist.
+    const { ctx, w, h } = setupCanvas(canvas);
+    ctx.clearRect(0, 0, w, h);
+    drawAxes(ctx, w, h);
+    if (e.features && e.features.voiced) {
+      drawLearnerContour(ctx, e.features.displayTimes, e.features.displayValues,
+        contourShift(e.features, null), w, h);
+    }
+  });
+  return canvases;
+}
+
+/**
+ * Make `container` hold exactly `count` canvases, reusing the existing ones
+ * when the count already matches so a re-render doesn't churn the DOM (and
+ * doesn't reset canvas backing stores mid-session). Also publishes the count
+ * as `--syllable-count` so a stylesheet can lay the row out with
+ * `grid-template-columns: repeat(var(--syllable-count), 1fr)` without the
+ * caller having to compute widths.
+ */
+function ensureCanvases (container, count) {
+  const existing = Array.from(container.querySelectorAll('canvas'));
+  if (existing.length !== count) {
+    container.textContent = '';
+    for (let i = 0; i < count; i++) {
+      const c = document.createElement('canvas');
+      c.className = 'syllable-canvas';
+      c.setAttribute('aria-label', `Pitch contour, syllable ${i + 1} of ${count}`);
+      container.appendChild(c);
+    }
+  }
+  container.style.setProperty('--syllable-count', String(count));
+  return Array.from(container.querySelectorAll('canvas'));
 }

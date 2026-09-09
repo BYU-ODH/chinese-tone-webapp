@@ -208,6 +208,7 @@ export function segmentSyllablesGuided (prep, targetTones, normalizer, opts = {}
   // avoids carving out a degenerate span whenever a better option exists,
   // rather than treating "unscoreable" as merely neutral.
   const GATE_FAIL_SCORE = -1;
+  const NEUTRAL_SCORE = 0;
   const scoreCache = new Map();
   const spanScore = (a, b, toneIdx) => {
     const key = a * (n + 1) + b; // a,b < n, collision-free
@@ -215,7 +216,19 @@ export function segmentSyllablesGuided (prep, targetTones, normalizer, opts = {}
     if (!byTone) { byTone = new Map(); scoreCache.set(key, byTone); }
     if (byTone.has(toneIdx)) return byTone.get(toneIdx);
     const f = extractSyllableFeatures(prep, { start: start + a, end: start + b }, normalizer);
-    const s = f.voiced ? classify(targetTones[toneIdx], f).targetScore : GATE_FAIL_SCORE;
+    // A neutral-tone position has no scoreable target (classify() returns an
+    // explicit non-scoring verdict for tone 0), so it contributes a constant.
+    // This is sound rather than arbitrary: every candidate partition assigns
+    // exactly one span to each syllable index, so a constant at a neutral
+    // index shifts all partition totals by the same amount and cannot change
+    // the argmax. The consequence is worth stating plainly — the boundaries
+    // AROUND a neutral syllable are chosen entirely by its neighbours' scores,
+    // so its own extent is unconstrained by the search. Voicing still counts:
+    // a gate-failing span scores GATE_FAIL_SCORE even at a neutral index, so
+    // the DP won't hand a neutral position a dead span when a live one exists.
+    const s = !f.voiced
+      ? GATE_FAIL_SCORE
+      : (targetTones[toneIdx] === 0 ? NEUTRAL_SCORE : classify(targetTones[toneIdx], f).targetScore);
     byTone.set(toneIdx, s);
     return s;
   };

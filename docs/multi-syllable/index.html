@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<title>Chinese Tone Trainer — phrases</title>
+<style>
+  /*
+   * Host-page chrome only. Everything inside <tone-phrase-trainer> styles
+   * itself from its own shadow root (styles.js), which is the whole point:
+   * dropping the element into a different app needs no CSS from that app.
+   * The custom properties set below show how a host themes it.
+   */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+    background: #f8fafc;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: #0f172a;
+    color: white;
+  }
+  header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+  header a { color: #cbd5e1; font-size: 0.85rem; }
+  main {
+    max-width: 720px;
+    margin: 1rem auto;
+    padding: 0 1rem 4rem;
+    display: grid;
+    gap: 1rem;
+  }
+  .intro { color: #64748b; font-size: 0.95rem; margin: 0; }
+  tone-phrase-trainer { --tt-radius: 12px; }
+  details {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+  }
+  summary { cursor: pointer; font-weight: 600; }
+  pre {
+    overflow-x: auto;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.6rem;
+    font-size: 0.75rem;
+    max-height: 20rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tone Trainer — phrases</h1>
+  <a href="../">← all demos</a>
+</header>
+
+<main>
+  <p class="intro">
+    Say the whole phrase in one go, holding the button. Each syllable is
+    scored separately against the tone it's actually pronounced with, so
+    tone sandhi (你好 → <em>ní hǎo</em>) is marked correctly. Neutral
+    syllables are shown dashed and aren't scored.
+  </p>
+
+  <tone-phrase-trainer id="trainer"></tone-phrase-trainer>
+
+  <details>
+    <summary>Last result (what an embedding app receives)</summary>
+    <p class="intro">
+      The component emits an <code>attempt</code> event carrying this
+      payload. Nothing on this page interprets it — it's dumped verbatim to
+      show the data contract a host app (e.g. a learning-outcomes
+      experiment) would log.
+    </p>
+    <pre id="dump">No attempt yet.</pre>
+  </details>
+</main>
+
+<script type="module">
+  import './tone-phrase-trainer.js';
+
+  const trainer = document.getElementById('trainer');
+  const dump = document.getElementById('dump');
+
+  trainer.addEventListener('attempt', (e) => {
+    dump.textContent = JSON.stringify(e.detail, null, 2);
+  });
+  trainer.addEventListener('error', (e) => {
+    console.error('trainer error:', e.detail.message);
+  });
+  trainer.addEventListener('ready', () => {
+    console.log('trainer ready;', trainer.phrases.length, 'phrases loaded');
+  });
+</script>
+</body>
+</html>

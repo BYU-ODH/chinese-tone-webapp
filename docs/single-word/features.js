@@ -46,6 +46,10 @@ export class SpeakerNormalizer {
     this.utteranceCount = 0;    // utterances that contributed frames
     this.tonesSeen = new Set(); // distinct target tones practiced
     this.minRangeSemitones = 6; // trust-gate bar; lowered by markCalibrated()
+    this.calibrated = false;    // set by markCalibrated(); read by callers to
+                                // decide whether to run a calibration pass at
+                                // all, so a normalizer handed to a second app
+                                // (or a second widget) isn't re-calibrated.
   }
 
   /**
@@ -135,6 +139,7 @@ export class SpeakerNormalizer {
    */
   markCalibrated (minRangeSemitones = 3) {
     this.minRangeSemitones = minRangeSemitones;
+    this.calibrated = true;
   }
 
   /** Reference log2-Hz to use for normalization. */

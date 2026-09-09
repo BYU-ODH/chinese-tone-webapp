@@ -199,6 +199,30 @@ export function classify (target, features) {
     };
   }
 
+  // Neutral tone (citation tone 0, see sandhi.js) is deliberately NOT scored:
+  // there is no validated T0 acoustic model in this project, and marking a
+  // learner right or wrong against an invented one is exactly the
+  // confidently-wrong feedback the whole pipeline is built to avoid. Return an
+  // explicit non-scoring verdict so callers must handle it.
+  //
+  // This guard is load-bearing, not defensive: `scores[target - 1]` with
+  // target 0 reads scores[-1] === undefined, which silently propagated as
+  // `targetScore: undefined` into every arithmetic consumer — most damagingly
+  // segmentSyllablesGuided()'s DP, where one neutral position turned the
+  // entire utterance's path score into NaN, failed every `>` comparison, and
+  // dropped the whole utterance to the even-split fallback while labelling the
+  // neutral syllable 'bad'.
+  if (target === 0) {
+    return {
+      verdict: 'neutral',
+      targetScore: null,
+      bestTone: null,
+      bestScore: 0,
+      scores: [0, 0, 0, 0],
+      diagnostic: null
+    };
+  }
+
   const scores = scoreTones(features);
   const targetScore = scores[target - 1];
 

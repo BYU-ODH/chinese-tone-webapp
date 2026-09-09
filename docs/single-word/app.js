@@ -6,13 +6,13 @@
  *   2. Show practice card; user records target words, gets feedback.
  *
  * Boot runs an explicit calibration pass first: the learner says the four
- * tones of "ma" in order (WORDS[0..3]), each feeding the same
- * SpeakerNormalizer instance ordinary practice uses. This guarantees
- * tone-diversity structurally (one utterance per tone, by construction),
- * so a completed calibration lowers the register trust-gate's range bar
- * (see SpeakerNormalizer.markCalibrated). Skippable — falls back to
- * today's passive accumulation with the stricter default bar. Until the
- * reference is trusted, the classifier scores on shape only — slope,
+ * tones of "ma" in order, each feeding the same SpeakerNormalizer instance
+ * ordinary practice uses. The sequencing, the trust-gate check and the
+ * one-extra-repeat rule all live in calibration.js (CalibrationSession),
+ * shared verbatim with the phrase app in docs/multi-syllable/ so the two
+ * can't drift; this file only draws the prompts and records. Skippable —
+ * falls back to passive accumulation with the stricter default bar. Until
+ * the reference is trusted, the classifier scores on shape only — slope,
  * curvature, duration, voice quality. Register cues (high vs low in the
  * speaker's range) start contributing once the reference stabilizes.
  *
@@ -28,6 +28,7 @@ import { classify } from './classifier.js';
 import { render, renderTargetOnly } from './viz.js';
 import { loadTargets, getSyllableTargets } from './targets.js';
 import { WORDS } from './words.js';
+import { CalibrationSession, shouldCalibrate } from './calibration.js';
 
 const VERDICT_TEXT = {
   good: { label: '✓ Nice!', cls: 'good' },
@@ -53,10 +54,9 @@ const state = {
   lastWavBlob: null,
   micMeterRaf: 0,
   ready: false,
-  // queue: WORDS indices to record, in order; pos: index into queue of the
-  // one currently displayed; extraRoundUsed: whether the one allowed
-  // "trust gate still not satisfied" extra repeat has already been spent.
-  calibration: { active: false, queue: [], pos: 0, extraRoundUsed: false }
+  // CalibrationSession while a pass is running, else null. The sequencing
+  // rules live in calibration.js, shared with the phrase app.
+  calibration: null
 };
 
 /* ------------------------------------------------------------------ */
@@ -106,7 +106,10 @@ async function boot () {
     bindPracticeHandlers();
     bindNavHandlers();
     bindCalibrationHandlers();
-    startCalibration();
+    // An already-calibrated normalizer (e.g. one restored from another app)
+    // shouldn't be put through the pass again.
+    if (shouldCalibrate(state.normalizer)) startCalibration();
+    else refreshWord();
   } catch (err) {
     console.error(err);
     showError(err.message || String(err));
@@ -277,7 +280,7 @@ function bindPracticeHandlers () {
 
         const analysis = await analyzeWav(analysisWav);
         const features = extractFeatures(analysis, state.normalizer);
-        const word = WORDS[state.wordIdx];
+        const word = currentWord();
         const target = currentTarget(word);
 
         render(els.canvas, target, features);
@@ -296,8 +299,7 @@ function bindPracticeHandlers () {
         // The target tone feeds the trust gate's tone-diversity check.
         state.normalizer.add(features.referenceFrames, word.tone);
 
-        if (state.calibration.active) {
-          els.feedback.innerHTML = '<span class="badge good">✓ Got it</span>';
+        if (isCalibrating()) {
           advanceCalibration();
           return;
         }
@@ -361,8 +363,20 @@ function bindNavHandlers () {
   });
 }
 
+/**
+ * The word on screen: a calibration prompt while a pass is running,
+ * otherwise the practice word the learner navigated to.
+ */
+function currentWord () {
+  return isCalibrating() ? state.calibration.item : WORDS[state.wordIdx];
+}
+
+function isCalibrating () {
+  return !!(state.calibration && state.calibration.active);
+}
+
 function refreshWord () {
-  const w = WORDS[state.wordIdx];
+  const w = currentWord();
   els.hanzi.textContent = w.hanzi;
   els.pinyin.textContent = w.pinyin;
   els.pinyin.className = 'pinyin t' + w.tone;
@@ -386,60 +400,43 @@ function currentTarget (word) {
 
 function bindCalibrationHandlers () {
   els.calibrationSkip.addEventListener('click', () => {
-    // No markCalibrated() call: falls back to today's passive-accumulation
-    // behavior with the stricter default trust-gate bar.
+    // session.skip() deliberately does NOT markCalibrated(): this falls back
+    // to passive accumulation with the stricter default bar.
+    if (state.calibration) state.calibration.skip();
     exitCalibrationUI();
   });
 }
 
 function startCalibration () {
-  state.calibration = { active: true, queue: [0, 1, 2, 3], pos: 0, extraRoundUsed: false };
+  state.calibration = new CalibrationSession(state.normalizer);
+  if (!state.calibration.active) { exitCalibrationUI(); return; }
   els.calibrationBanner.classList.remove('hidden');
   els.prevWord.disabled = true;
   els.nextWord.disabled = true;
-  goToCalibrationWord();
+  showCalibrationPrompt();
 }
 
-function goToCalibrationWord () {
-  state.wordIdx = state.calibration.queue[state.calibration.pos];
+function showCalibrationPrompt () {
   refreshWord();
-  els.calibrationProgress.textContent =
-    `Word ${state.calibration.pos + 1} of ${state.calibration.queue.length}`;
+  els.calibrationProgress.textContent = state.calibration.progressLabel;
 }
 
 function advanceCalibration () {
-  const c = state.calibration;
-  c.pos += 1;
-  if (c.pos < c.queue.length) {
-    goToCalibrationWord();
-    return;
+  const stillCalibrating = state.calibration.accept();
+  if (stillCalibrating) {
+    showCalibrationPrompt();
+  } else {
+    exitCalibrationUI();
   }
-  // Queue exhausted. If the trust gate still isn't satisfied, spend the
-  // one allowed extra repeat on a random already-covered tone before
-  // giving up and lowering the bar anyway.
-  if (!state.normalizer.isRegisterTrusted() && !c.extraRoundUsed) {
-    c.extraRoundUsed = true;
-    c.queue.push(pickExtraCalibrationWordIdx());
-    goToCalibrationWord();
-    return;
-  }
-  finishCalibration();
-}
-
-function pickExtraCalibrationWordIdx () {
-  const tones = [...state.normalizer.tonesSeen];
-  const tone = tones.length ? tones[Math.floor(Math.random() * tones.length)] : 1;
-  const idx = WORDS.findIndex(w => w.tone === tone);
-  return idx >= 0 ? idx : 0;
-}
-
-function finishCalibration () {
-  state.normalizer.markCalibrated();
-  exitCalibrationUI();
+  // Written AFTER the refresh above, not before: refreshWord() clears
+  // #feedback, so a badge set first was wiped in the same task and could
+  // never actually be seen.
+  els.feedback.innerHTML = stillCalibrating
+    ? '<span class="badge good">\u2713 Got it</span>'
+    : '<span class="badge good">\u2713 Pitch range set</span>';
 }
 
 function exitCalibrationUI () {
-  state.calibration.active = false;
   els.calibrationBanner.classList.add('hidden');
   els.prevWord.disabled = false;
   els.nextWord.disabled = false;

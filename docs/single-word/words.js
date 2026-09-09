@@ -16,3 +16,14 @@ export const WORDS = [
   { hanzi: '你', pinyin: 'nǐ', tone: 3, gloss: 'you',    syllable: 'ni' },
   { hanzi: '不', pinyin: 'bù', tone: 4, gloss: 'not',    syllable: 'bu' }
 ];
+
+/**
+ * The calibration set: one word per tone, same base syllable, so a completed
+ * pass satisfies SpeakerNormalizer's tone-diversity gate by construction.
+ * Selected BY TONE rather than by slicing WORDS[0..3], so reordering or
+ * inserting into WORDS above can't silently change what calibration asks for.
+ * Shared by both apps via calibration.js.
+ */
+export const CALIBRATION_WORDS = [1, 2, 3, 4].map(
+  tone => WORDS.find(w => w.syllable === 'ma' && w.tone === tone)
+);
