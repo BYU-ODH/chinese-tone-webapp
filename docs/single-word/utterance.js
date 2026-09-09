@@ -29,11 +29,11 @@ import { classify } from './classifier.js';
  * @param {object} analysis      Praat analysis struct (see praat-analysis.js)
  * @param {SpeakerNormalizer} normalizer
  * @param {number[]} targetTones expected citation tones, in order — its
- *   length is the expected syllable count segmentSyllables() targets
+ *   length is the expected syllable count segmentSyllablesGuided() targets
  * @returns {{voiced:boolean, reason?:string, syllables?:object[], segmentation?:{method:string}}}
  *   syllables[i] is extractSyllableFeatures()'s per-span struct (each
  *   independently .voiced true/false), in time order. segmentation.method
- *   is 'peaks' or 'even-split' (see segmentation.js) so callers/UI can
+ *   is 'guided' or 'even-split' (see segmentation.js) so callers/UI can
  *   flag a best-guess split rather than presenting it as confidently exact.
  */
 export function extractUtteranceFeatures (analysis, normalizer, targetTones) {

@@ -87,7 +87,7 @@ console.log('--- 1. Two-syllable utterance: segments, extracts, and classifies b
   const { voiced, syllables, segmentation } = extractUtteranceFeatures(twoSyllableAnalysis(), normalizer, targetTones);
 
   check(voiced, 'utterance is voiced');
-  check(segmentation.method === 'peaks', `segmentation used 'peaks' (got '${segmentation?.method}')`);
+  check(segmentation.method === 'guided', `segmentation used 'guided' (got '${segmentation?.method}')`);
   check(syllables.length === 2, `2 syllables returned (got ${syllables?.length})`);
   check(syllables.every(f => f.voiced), 'both syllables independently voiced');
 
