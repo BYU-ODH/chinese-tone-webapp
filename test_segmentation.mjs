@@ -1,5 +1,6 @@
 /*
- * Regression test for segmentSyllables() (docs/single-word/segmentation.js).
+ * Regression test for segmentSyllables() and segmentSyllablesGuided()
+ * (docs/single-word/segmentation.js).
  *
  * No Praat/WASM needed: segmentSyllables() consumes plain {n,dx,x1,values}
  * blocks, so we synthesize intensity/pitch contours directly, the same way
@@ -9,7 +10,9 @@
  *   node test_segmentation.mjs
  */
 
-import { segmentSyllables } from './docs/single-word/segmentation.js';
+import { segmentSyllables, segmentSyllablesGuided } from './docs/single-word/segmentation.js';
+import { prepUtterance, extractSyllableFeatures, SpeakerNormalizer } from './docs/single-word/features.js';
+import { classify } from './docs/single-word/classifier.js';
 
 const DX = 0.01; // 10ms frames
 
@@ -55,6 +58,52 @@ function checkCoverage (spans, start, end, label) {
   const gaplessContiguous = spans.every((s, i) => i === 0 || s.start === spans[i - 1].end + 1);
   check(spans[0]?.start === start && spans[spans.length - 1]?.end === end && gaplessContiguous,
     `${label}: spans cover [${start},${end}] with no gaps/overlaps (got ${JSON.stringify(spans)})`);
+}
+
+/*
+ * Xu-style tone shapes in semitones re a mid-register M, matching
+ * test_normalizer.mjs's TONES — reused here (not imported: that file
+ * defines them at module scope, not exported) to build a full multi-
+ * syllable analysis struct with genuine per-tone pitch contours, since
+ * segmentSyllablesGuided() needs real extractSyllableFeatures()/classify()
+ * gates to pass, not just intensity+voicing like segmentSyllables().
+ */
+const M = 210;
+const st = (s) => M * Math.pow(2, s / 12);
+const TONE_SHAPES = {
+  1: (u) => st(u < 0.15 ? 2.5 + 2.5 * (u / 0.15) : 5),
+  2: (u) => st(-1 + 6 * u),
+  3: (u) => st(-1 - 6.5 * (1 - Math.pow(2 * u - 1, 2))),
+  4: (u) => st(5 - 11 * Math.pow(u, 0.8))
+};
+
+/**
+ * Build a full multi-syllable analysis struct: `segments` is
+ * [{lo,hi,tone}] (inclusive frame ranges, in time order, each voiced with
+ * TONE_SHAPES[tone]), silence/dips elsewhere. Loud+high-HNR within each
+ * segment, quiet+low-HNR in the gaps — enough for extractSyllableFeatures'
+ * MIN_VOICED_FRAMES/MIN_HNR_FOR_SCORING gates to pass on real segments and
+ * fail on gaps.
+ */
+function makeUtteranceAnalysis (n, segments) {
+  const pv = new Array(n).fill(NaN);
+  const iv = new Array(n).fill(40);
+  const hv = new Array(n).fill(NaN);
+  for (const { lo, hi, tone } of segments) {
+    const fn = TONE_SHAPES[tone];
+    for (let i = lo; i <= hi; i++) {
+      const u = (i - lo) / Math.max(1, hi - lo);
+      pv[i] = fn(u);
+      iv[i] = 75;
+      hv[i] = 15;
+    }
+  }
+  const hnrFinite = hv.filter(Number.isFinite);
+  const hnrMean = hnrFinite.length ? hnrFinite.reduce((a, b) => a + b, 0) / hnrFinite.length : -99;
+  return {
+    duration: n * DX,
+    pitch: block(pv), intensity: block(iv), harmonicity: block(hv), hnrMean
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +205,63 @@ console.log('\n--- 6. targetCount=1 is a no-op (whole span, one span) ---');
   check(method === 'peaks', `method is 'peaks' (got '${method}')`);
   check(spans.length === 1 && spans[0].start === 0 && spans[0].end === n - 1,
     `single span covers the whole clip (got ${JSON.stringify(spans)})`);
+}
+
+console.log('\n--- 7. segmentSyllablesGuided(): two distinct tones (T2 then T4), clear dip ---');
+{
+  const n = 80;
+  const analysis = makeUtteranceAnalysis(n, [{ lo: 5, hi: 34, tone: 2 }, { lo: 40, hi: 74, tone: 4 }]);
+  const prep = prepUtterance(analysis);
+  const norm = new SpeakerNormalizer();
+  const { spans, method } = segmentSyllablesGuided(prep, [2, 4], norm);
+
+  check(method === 'guided', `method is 'guided' (got '${method}')`);
+  check(spans.length === 2, `2 spans returned (got ${spans.length})`);
+  checkCoverage(spans, prep.rawSpan.start, prep.rawSpan.end, 'guided two-syllable');
+  check(spans[0].start <= 20 && 20 <= spans[0].end, 'T2 syllable region (frame 20) inside span 0');
+  check(spans[1].start <= 55 && 55 <= spans[1].end, 'T4 syllable region (frame 55) inside span 1');
+
+  // The whole point: each resulting span should actually score well against
+  // its OWN target tone, not just exist — this is what a blind peak-picker
+  // can't promise (measured: it doesn't, see segmentation.js's header).
+  const f0 = extractSyllableFeatures(prep, spans[0], norm);
+  const f1 = extractSyllableFeatures(prep, spans[1], norm);
+  check(f0.voiced && classify(2, f0).verdict !== 'bad', `span 0 classifies as T2-compatible (verdict=${f0.voiced ? classify(2, f0).verdict : 'unvoiced'})`);
+  check(f1.voiced && classify(4, f1).verdict !== 'bad', `span 1 classifies as T4-compatible (verdict=${f1.voiced ? classify(4, f1).verdict : 'unvoiced'})`);
+}
+
+console.log('\n--- 8. segmentSyllablesGuided(): three tones (T1, T3, T4), correct order ---');
+{
+  const n = 120;
+  const analysis = makeUtteranceAnalysis(n, [
+    { lo: 5, hi: 34, tone: 1 }, { lo: 45, hi: 74, tone: 3 }, { lo: 85, hi: 114, tone: 4 }
+  ]);
+  const prep = prepUtterance(analysis);
+  const norm = new SpeakerNormalizer();
+  const { spans, method } = segmentSyllablesGuided(prep, [1, 3, 4], norm);
+
+  check(method === 'guided', `method is 'guided' (got '${method}')`);
+  check(spans.length === 3, `3 spans returned (got ${spans.length})`);
+  checkCoverage(spans, prep.rawSpan.start, prep.rawSpan.end, 'guided three-syllable');
+  check(spans[0].start <= 20 && 20 <= spans[0].end, 'T1 syllable region (frame 20) inside span 0');
+  check(spans[1].start <= 60 && 60 <= spans[1].end, 'T3 syllable region (frame 60) inside span 1');
+  check(spans[2].start <= 100 && 100 <= spans[2].end, 'T4 syllable region (frame 100) inside span 2');
+}
+
+console.log('\n--- 9. segmentSyllablesGuided(): too few candidate boundaries falls back to even-split ---');
+{
+  // A single, unbroken loud region with no internal dip at all (n small
+  // enough that collapsePlateaus' one candidate sits AT the boundary, not
+  // internally) — there's nothing for the search to choose between.
+  const n = 20;
+  const analysis = makeUtteranceAnalysis(n, [{ lo: 0, hi: n - 1, tone: 2 }]);
+  const prep = prepUtterance(analysis);
+  const norm = new SpeakerNormalizer();
+  const { spans, method } = segmentSyllablesGuided(prep, [2, 4], norm);
+
+  check(method === 'even-split', `method is 'even-split' (got '${method}'); no internal dip to search over`);
+  check(spans.length === 2, `2 spans returned (got ${spans.length})`);
+  checkCoverage(spans, prep.rawSpan.start, prep.rawSpan.end, 'guided fallback');
 }
 
 /* ------------------------------------------------------------------ */

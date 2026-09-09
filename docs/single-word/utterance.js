@@ -22,7 +22,7 @@
  * timing in app.js.
  */
 import { prepUtterance, extractSyllableFeatures } from './features.js';
-import { segmentSyllables } from './segmentation.js';
+import { segmentSyllablesGuided } from './segmentation.js';
 import { classify } from './classifier.js';
 
 /**
@@ -45,10 +45,17 @@ export function extractUtteranceFeatures (analysis, normalizer, targetTones) {
   // Segment within rawSpan, NOT prep.speechSpan: speechSpan is trimmed by
   // findSpeechSpan around a single loudness peak, which would incorrectly
   // discard every syllable but the loudest one (see prepUtterance). Noise
-  // rejection here is segmentSyllables' own job (prominence + voicing
-  // checks), not findSpeechSpan's.
-  const { spans, method } = segmentSyllables(
-    analysis.intensity, analysis.pitch, targetTones.length, prep.rawSpan);
+  // rejection here is segmentation's own job, not findSpeechSpan's.
+  //
+  // segmentSyllablesGuided(), not the blind intensity-peak segmentSyllables():
+  // measured on 1,027 real double-syllable ToneAudio clips at +13.2pp over
+  // even-split (67.3% vs 54.1%), vs. blind peak-picking's +0.6pp at its own
+  // best tuning (segmentation.js's file header has the full history — peak-
+  // picking was measured and found wanting; this wasn't). normalizer is
+  // passed through read-only here — segmentation never calls .add(), so
+  // this doesn't affect the register reference, only which candidate spans
+  // get scored against which target tone during the boundary search.
+  const { spans, method } = segmentSyllablesGuided(prep, targetTones, normalizer);
   const syllables = spans.map(span => extractSyllableFeatures(prep, span, normalizer));
 
   return { voiced: true, syllables, segmentation: { method } };

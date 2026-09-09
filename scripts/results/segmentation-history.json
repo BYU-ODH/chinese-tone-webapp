@@ -292,5 +292,183 @@
       "deltaVsBaseline": 0.6
     },
     "notes": "Swept smoothWindowSec x {0.015,0.03,0.05} and minProminenceDb x {2,3,4,5,6,8,10,14} (24 combos) against per-syllable tone classification accuracy on 1027 real double-syllable clips (both syllables citation-tone-clear, sandhi not applied -- a constant bias across all combos). NO combo meaningfully beats always-even-split (54.1%); best is +0.6pp at 36.7% peaks-rate. Most combos are WORSE than baseline. Conclusion: intensity-peak-based segmentation (de Jong & Wempe style, as implemented) does not reliably find genuine syllable boundaries on this corpus -- even when it reports method=peaks (structural success), the resulting boundaries are not meaningfully better than blindly splitting the clip in half. This is a real negative result, not a tuning gap: the threshold space was swept broadly and none of it clears the bar."
+  },
+  {
+    "timestamp": "2026-07-29T18:34:12.868Z",
+    "gitCommit": "9b2861a",
+    "gitDirty": true,
+    "label": "guided (known-target-tone DP) vs peaks vs baseline, per-syllable tone accuracy",
+    "corpus": "ToneAudio_2026-07-22",
+    "eligibleClips": 64,
+    "baselineAlwaysEvenSplitAccuracy": 51.6,
+    "peaksAccuracy": 49.6,
+    "peaksPct": 37.5,
+    "guidedAccuracy": 67.2,
+    "guidedPct": 100,
+    "notes": "Guided segmentation (segmentSyllablesGuided): DP/Viterbi search over candidate intensity-dip boundaries maximizing total classify().targetScore against the KNOWN target tone sequence, using the app's own tone classifier as the scoring model in place of a full phonetic acoustic model. Delta vs baseline: 15.6pp. Compare against peaks' -2.0pp (blind intensity-peak prominence, MEASURED AND FOUND WANTING per segmentation.js's header)."
+  },
+  {
+    "timestamp": "2026-07-29T18:35:00.354Z",
+    "gitCommit": "9b2861a",
+    "gitDirty": true,
+    "label": "guided (known-target-tone DP) vs peaks vs baseline, per-syllable tone accuracy",
+    "corpus": "ToneAudio_2026-07-22",
+    "eligibleClips": 1027,
+    "baselineAlwaysEvenSplitAccuracy": 54.1,
+    "peaksAccuracy": 54.7,
+    "peaksPct": 36.7,
+    "guidedAccuracy": 67.3,
+    "guidedPct": 99.9,
+    "notes": "Guided segmentation (segmentSyllablesGuided): DP/Viterbi search over candidate intensity-dip boundaries maximizing total classify().targetScore against the KNOWN target tone sequence, using the app's own tone classifier as the scoring model in place of a full phonetic acoustic model. Delta vs baseline: 13.2pp. Compare against peaks' 0.6pp (blind intensity-peak prominence, MEASURED AND FOUND WANTING per segmentation.js's header)."
+  },
+  {
+    "timestamp": "2026-07-29T18:45:49.302Z",
+    "gitCommit": "9b2861a",
+    "gitDirty": true,
+    "label": "guided (known-target-tone DP) vs peaks vs baseline vs oracle, per-syllable tone accuracy",
+    "corpus": "ToneAudio_2026-07-22",
+    "eligibleClips": 39,
+    "baselineAlwaysEvenSplitAccuracy": 47.4,
+    "peaksAccuracy": 42.9,
+    "peaksPct": 46.2,
+    "guidedAccuracy": 65.4,
+    "guidedPct": 100,
+    "oracleAccuracy": 74.4,
+    "guidedBreakdown": {
+      "byTone": {
+        "1": [
+          22,
+          24
+        ],
+        "2": [
+          9,
+          18
+        ],
+        "3": [
+          11,
+          18
+        ],
+        "4": [
+          9,
+          18
+        ]
+      },
+      "byPos": {
+        "0": [
+          25,
+          39
+        ],
+        "1": [
+          26,
+          39
+        ]
+      }
+    },
+    "oracleBreakdown": {
+      "byTone": {
+        "1": [
+          22,
+          24
+        ],
+        "2": [
+          11,
+          18
+        ],
+        "3": [
+          12,
+          18
+        ],
+        "4": [
+          13,
+          18
+        ]
+      },
+      "byPos": {
+        "0": [
+          27,
+          39
+        ],
+        "1": [
+          31,
+          39
+        ]
+      }
+    },
+    "notes": "Guided segmentation (segmentSyllablesGuided): DP/Viterbi search over candidate intensity-dip boundaries maximizing total classify().targetScore against the KNOWN target tone sequence, using the app's own tone classifier as the scoring model in place of a full phonetic acoustic model. Delta vs baseline: 18.0pp. Compare against peaks' -4.5pp (blind intensity-peak prominence, MEASURED AND FOUND WANTING per segmentation.js's header). Oracle = unconstrained every-frame boundary search (not just intensity-dip candidates), scored by the SAME classifier — the ceiling for \"this classifier as a segmentation-scoring model,\" period. Headroom left in guided vs oracle: 9.0pp. If that headroom is small, the bottleneck is the classifier itself (see breakdown by tone), not the intensity-dip candidate restriction — more segmentation tuning wouldn't help much; a fundamentally better acoustic model (or fixing the classifier) would."
+  },
+  {
+    "timestamp": "2026-07-29T18:50:07.983Z",
+    "gitCommit": "9b2861a",
+    "gitDirty": true,
+    "label": "guided (known-target-tone DP) vs peaks vs baseline vs oracle, per-syllable tone accuracy",
+    "corpus": "ToneAudio_2026-07-22",
+    "eligibleClips": 1027,
+    "baselineAlwaysEvenSplitAccuracy": 54.1,
+    "peaksAccuracy": 54.7,
+    "peaksPct": 36.7,
+    "guidedAccuracy": 67.3,
+    "guidedPct": 99.9,
+    "oracleAccuracy": 76.7,
+    "guidedBreakdown": {
+      "byTone": {
+        "1": [
+          485,
+          541
+        ],
+        "2": [
+          333,
+          534
+        ],
+        "3": [
+          255,
+          473
+        ],
+        "4": [
+          309,
+          506
+        ]
+      },
+      "byPos": {
+        "0": [
+          666,
+          1027
+        ],
+        "1": [
+          716,
+          1027
+        ]
+      }
+    },
+    "oracleBreakdown": {
+      "byTone": {
+        "1": [
+          507,
+          541
+        ],
+        "2": [
+          380,
+          534
+        ],
+        "3": [
+          318,
+          473
+        ],
+        "4": [
+          370,
+          506
+        ]
+      },
+      "byPos": {
+        "0": [
+          738,
+          1027
+        ],
+        "1": [
+          837,
+          1027
+        ]
+      }
+    },
+    "notes": "Guided segmentation (segmentSyllablesGuided): DP/Viterbi search over candidate intensity-dip boundaries maximizing total classify().targetScore against the KNOWN target tone sequence, using the app's own tone classifier as the scoring model in place of a full phonetic acoustic model. Delta vs baseline: 13.2pp. Compare against peaks' 0.6pp (blind intensity-peak prominence, MEASURED AND FOUND WANTING per segmentation.js's header). Oracle = unconstrained every-frame boundary search (not just intensity-dip candidates), scored by the SAME classifier — the ceiling for \"this classifier as a segmentation-scoring model,\" period. Headroom left in guided vs oracle: 9.4pp. If that headroom is small, the bottleneck is the classifier itself (see breakdown by tone), not the intensity-dip candidate restriction — more segmentation tuning wouldn't help much; a fundamentally better acoustic model (or fixing the classifier) would."
   }
 ]
