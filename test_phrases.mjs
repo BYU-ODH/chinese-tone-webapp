@@ -13,8 +13,10 @@
  *      resolveSandhi() produces. sandhi.js is an authoring-time tool whose
  *      output is committed by hand; without this check a rule change or a
  *      typo would silently drill learners against the wrong target.
- *   2. No shipped phrase contains an ambiguous 3+ T3 run (an open question
- *      with our Chinese collaborators — see PHRASES' header).
+ *   2. No shipped phrase contains an ambiguous 4+ T3 run. Three-long runs
+ *      ARE shipped, and their genuinely optional position must accept BOTH
+ *      realizations our collaborators confirmed — scoring one arbitrarily
+ *      would mark a correct production wrong.
  *   3. Neutral tone doesn't poison the pipeline. This was a real bug: one
  *      tone-0 position made classify() return targetScore undefined, which
  *      turned the guided segmentation DP's path score into NaN and dropped
@@ -26,7 +28,8 @@
 
 import { readFileSync } from 'node:fs';
 
-import { PHRASES, citationTones, spokenPinyin, isSandhi } from './docs/multi-syllable/phrases.js';
+import { PHRASES, citationTones, spokenPinyin, isSandhi, acceptedFor, isOptional }
+  from './docs/multi-syllable/phrases.js';
 import { aggregate, buildAttemptDetail } from './docs/multi-syllable/result.js';
 import { resolveSandhi } from './docs/single-word/sandhi.js';
 import { classify } from './docs/single-word/classifier.js';
@@ -75,7 +78,15 @@ function makeAnalysis (n, segments) {
     for (let i = lo; i <= hi; i++) {
       const u = (i - lo) / Math.max(1, hi - lo);
       pv[i] = fn(u);
-      iv[i] = 75;
+      // Raised-cosine intensity envelope, not a flat plateau. Real syllables
+      // peak in the nucleus and taper at the edges, and the shape matters
+      // here: segmentSyllablesGuided() nominates candidate boundaries at
+      // local intensity minima using a non-strict comparison on both sides,
+      // so EVERY interior frame of an exactly-flat loud region qualifies as
+      // a "minimum". A flat fixture therefore offers the boundary search
+      // candidate splits in the middle of a syllable, and it will take them
+      // — which is a fixture artifact, not something real audio produces.
+      iv[i] = 60 + 15 * Math.sin(Math.PI * u);
       hv[i] = 15;
     }
   }
@@ -87,15 +98,21 @@ function makeAnalysis (n, segments) {
 
 /* ------------------------------------------------------------------ */
 
-console.log('--- 1. Curriculum: stored surfaceTones match resolveSandhi() ---');
+console.log('--- 1. Curriculum: stored tones match resolveSandhi() ---');
 {
   let mismatched = 0;
+  let acceptedMismatched = 0;
   let flagged = 0;
   for (const p of PHRASES) {
-    const { surfaceTones, flags } = resolveSandhi(p.syllables);
+    const { surfaceTones, acceptedTones, flags } = resolveSandhi(p.syllables);
     if (JSON.stringify(surfaceTones) !== JSON.stringify(p.surfaceTones)) {
       mismatched++;
       console.log(`    ${p.id}: stored ${JSON.stringify(p.surfaceTones)} vs computed ${JSON.stringify(surfaceTones)}`);
+    }
+    const storedAccepted = p.syllables.map((_s, i) => acceptedFor(p, i));
+    if (JSON.stringify(acceptedTones) !== JSON.stringify(storedAccepted)) {
+      acceptedMismatched++;
+      console.log(`    ${p.id}: accepted ${JSON.stringify(storedAccepted)} vs computed ${JSON.stringify(acceptedTones)}`);
     }
     if (flags.length) {
       flagged++;
@@ -104,8 +121,12 @@ console.log('--- 1. Curriculum: stored surfaceTones match resolveSandhi() ---');
   }
   check(PHRASES.length > 0, `${PHRASES.length} phrases in the curriculum`);
   check(mismatched === 0, 'every stored surfaceTones array matches resolveSandhi()');
+  check(acceptedMismatched === 0,
+    'every stored acceptedTones array matches resolveSandhi() (including the single-option ones)');
   check(flagged === 0,
-    'no shipped phrase hits an ambiguous 3+ T3 run (those are an open collaborator question)');
+    'no shipped phrase hits an ambiguous 4+ T3 run (those are still never guessed)');
+  check(PHRASES.every(p => p.surfaceTones.every((t, i) => acceptedFor(p, i)[0] === t)),
+    'the displayed tone is always the first accepted option');
 }
 
 console.log('\n--- 2. Curriculum: structural integrity ---');
@@ -177,6 +198,63 @@ console.log('\n--- 4. Neutral tone is not scored, and does not poison the pipeli
   check(verdicts[1].verdict === 'neutral', 'the neutral syllable is reported neutral, not bad');
   check(verdicts.every(x => x.targetScore === null || Number.isFinite(x.targetScore)),
     'no NaN/undefined targetScore anywhere in the utterance');
+}
+
+console.log('\n--- 4b. Three-long T3 runs: both confirmed realizations score ---');
+{
+  // Our collaborators confirmed wo3 ye3 hen3 is acceptable as EITHER
+  // wo2 ye2 hen3 or wo3 ye2 hen3. Encoded invariant: the penultimate rises
+  // and the final stays low in both; only the run-initial syllable varies.
+  const r = resolveSandhi([{ tone: 3 }, { tone: 3 }, { tone: 3 }]);
+  check(r.flags.length === 0, 'a 3-long run is resolved, not flagged');
+  check(r.surfaceTones[1] === 2, 'the penultimate syllable rises to T2 (obligatory)');
+  check(r.surfaceTones[2] === 3, 'the final syllable keeps T3');
+  check(JSON.stringify(r.acceptedTones[1]) === '[2]', 'the penultimate accepts only T2');
+  check(JSON.stringify(r.acceptedTones[2]) === '[3]', 'the final accepts only T3');
+  check(r.acceptedTones[0].length === 2 &&
+        r.acceptedTones[0].includes(2) && r.acceptedTones[0].includes(3),
+    `the run-initial syllable accepts both T3 and T2 (got ${JSON.stringify(r.acceptedTones[0])})`);
+
+  const four = resolveSandhi([{ tone: 3 }, { tone: 3 }, { tone: 3 }, { tone: 3 }]);
+  check(four.flags.length === 1 && four.flags[0].runLength === 4,
+    'a 4-long run is still flagged rather than extrapolated from the 3-run answer');
+  check(JSON.stringify(four.surfaceTones) === '[3,3,3,3]',
+    'a flagged run is left at citation tones, unresolved');
+
+  const isolated = resolveSandhi([{ tone: 3 }, { tone: 1 }]);
+  check(isolated.flags.length === 0, 'an isolated T3 is not flagged (no adjacency, no sandhi)');
+
+  // The scoring path must accept EITHER realization end to end.
+  const phrase = PHRASES.find(p => p.id === 'wo-hen-hao');
+  check(!!phrase, 'the curriculum ships a 3-long T3 phrase');
+  check(isOptional(phrase, 0) && !isOptional(phrase, 1) && !isOptional(phrase, 2),
+    'only the run-initial position is marked optional');
+  const accepted = phrase.syllables.map((_s, i) => acceptedFor(phrase, i));
+  for (const firstTone of [3, 2]) {
+    const analysis = makeAnalysis(120, [
+      { lo: 5, hi: 34, tone: firstTone }, { lo: 45, hi: 74, tone: 2 }, { lo: 85, hi: 114, tone: 3 }
+    ]);
+    const norm = new SpeakerNormalizer();
+    const res = extractUtteranceFeatures(analysis, norm, phrase.surfaceTones, accepted);
+    const verdicts = classifyUtterance(res.syllables, phrase.surfaceTones, accepted);
+    check(verdicts.every(v => v.verdict !== 'bad'),
+      `producing T${firstTone} on the optional syllable is not marked wrong ` +
+      `(got ${verdicts.map(v => v.verdict).join(', ')})`);
+    check(verdicts[0].matchedTone === firstTone,
+      `matchedTone reports the realization actually produced (T${verdicts[0].matchedTone})`);
+    const agg = aggregate(phrase, verdicts);
+    check(agg.scored === 3, 'all three syllables are scored');
+  }
+
+  // Guard against the inverse error: the OBLIGATORY positions must still be
+  // strict, or "accepts either" would have quietly become "accepts anything".
+  const wrongMiddle = makeAnalysis(120, [
+    { lo: 5, hi: 34, tone: 3 }, { lo: 45, hi: 74, tone: 4 }, { lo: 85, hi: 114, tone: 3 }
+  ]);
+  const wres = extractUtteranceFeatures(wrongMiddle, new SpeakerNormalizer(), phrase.surfaceTones, accepted);
+  const wv = classifyUtterance(wres.syllables, phrase.surfaceTones, accepted);
+  check(wv[1].verdict !== 'good',
+    `a falling T4 on the obligatory-rise syllable is still not accepted (got '${wv[1].verdict}')`);
 }
 
 console.log('\n--- 5. aggregate() excludes neutral syllables from the score ---');

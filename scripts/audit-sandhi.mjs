@@ -111,16 +111,26 @@ for (const tok of [...tokens].sort()) {
     if (!clause) continue;
     const syllables = tokenizePhrase(clause);
     const input = syllables.map(s => ({ tone: s.citation }));
-    const { surfaceTones, flags } = resolveSandhi(input);
+    const { surfaceTones, acceptedTones, flags } = resolveSandhi(input);
 
     const flaggedIdx = new Set();
     for (const fl of flags) for (let i = fl.start; i <= fl.end; i++) flaggedIdx.add(i);
 
+    // Compare against every ACCEPTED realization, not just the displayed
+    // one. A 3-long T3 run's first syllable is legitimately either T3 or T2
+    // (see sandhi.js), so the corpus recording one of them is agreement,
+    // not a mismatch — checking surfaceTones alone would manufacture a
+    // failure here roughly half the time.
     const mismatches = [];
     for (let i = 0; i < syllables.length; i++) {
       if (flaggedIdx.has(i)) continue;
-      if (surfaceTones[i] !== syllables[i].surface) {
-        mismatches.push({ i, pinyin: syllables[i].pinyin, predicted: surfaceTones[i], actual: syllables[i].surface });
+      const ok = (acceptedTones[i] || [surfaceTones[i]]).includes(syllables[i].surface);
+      if (!ok) {
+        mismatches.push({
+          i, pinyin: syllables[i].pinyin,
+          predicted: (acceptedTones[i] || [surfaceTones[i]]).map(t => 'T' + t).join(' or '),
+          actual: syllables[i].surface
+        });
       }
     }
 
@@ -135,7 +145,7 @@ for (const tok of [...tokens].sort()) {
       fail++;
       console.log(`  MISMATCH ${label}`);
       for (const mm of mismatches) {
-        console.log(`           [${mm.i}] ${mm.pinyin}: predicted T${mm.predicted}, corpus says T${mm.actual}`);
+        console.log(`           [${mm.i}] ${mm.pinyin}: predicted ${mm.predicted}, corpus says T${mm.actual}`);
       }
     } else {
       pass++;

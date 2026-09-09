@@ -96,7 +96,7 @@ import {
 } from '../single-word/utterance.js';
 import { renderUtterance } from '../single-word/viz.js';
 import { loadTargets, getSyllableTargets } from '../single-word/targets.js';
-import { PHRASES, spokenPinyin, isSandhi } from './phrases.js';
+import { PHRASES, spokenPinyin, isSandhi, acceptedFor, isOptional } from './phrases.js';
 import {
   VERDICT_LABEL, UNCERTAIN_REASON_TEXT, aggregate, summaryHtml,
   buildAttemptDetail, escapeHtml
@@ -479,7 +479,11 @@ export class TonePhraseTrainer extends HTMLElement {
     if (!phrase) return;
     const surface = phrase.surfaceTones;
 
-    const res = extractUtteranceFeatures(analysis, this._normalizer, surface);
+    // acceptedTones is threaded into BOTH the boundary search and the
+    // scoring, so a position that legitimately accepts two realizations is
+    // never judged against one arbitrary choice (see sandhi.js).
+    const accepted = phrase.syllables.map((_s, i) => acceptedFor(phrase, i));
+    const res = extractUtteranceFeatures(analysis, this._normalizer, surface, accepted);
     if (!res.voiced) {
       this._els.summary.innerHTML =
         '<div class="diagnostic">' +
@@ -490,9 +494,13 @@ export class TonePhraseTrainer extends HTMLElement {
       return;
     }
 
-    const verdicts = classifyUtterance(res.syllables, surface);
-    // Register update happens once, after the whole utterance is scored.
-    commitUtteranceToNormalizer(this._normalizer, res.syllables, surface);
+    const verdicts = classifyUtterance(res.syllables, surface, accepted);
+    // Register update happens once, after the whole utterance is scored,
+    // labelled with the tone actually produced rather than the displayed
+    // one — that label feeds the normalizer's tone-diversity gate.
+    const producedTones = verdicts.map((v, i) =>
+      (v && v.matchedTone !== undefined && v.matchedTone !== null) ? v.matchedTone : surface[i]);
+    commitUtteranceToNormalizer(this._normalizer, res.syllables, producedTones);
 
     this._paint(phrase, res, verdicts);
     this._updateStatusRow();
@@ -688,6 +696,12 @@ export class TonePhraseTrainer extends HTMLElement {
     // noise on the screen.
     if (isSandhi(phrase, i)) {
       html += `<span class="citation">${escapeHtml(syl.pinyin)}</span>`;
+    }
+    // A genuinely optional position: say so, rather than showing one form
+    // and silently accepting another. Without this the learner would see a
+    // single prompt and have no idea the alternative was equally right.
+    if (isOptional(phrase, i) && syl.altPinyin) {
+      html += `<span class="alt">or ${escapeHtml(syl.altPinyin)}</span>`;
     }
     if (label) html += `<span class="mark">${escapeHtml(label)}</span>`;
     html += '</div>';

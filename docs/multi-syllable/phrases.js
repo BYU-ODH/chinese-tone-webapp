@@ -10,12 +10,14 @@
  *
  * Scope rules this list deliberately obeys:
  *
- *   - No phrase contains three or more consecutive citation-T3 syllables.
- *     resolveSandhi() flags those as a genuine prosodic-domain ambiguity
- *     (Shih 1986) and refuses to guess; the correct grouping for the one
- *     real example we have ("wo3 ye3 hen3 ...") is an open question with
- *     our Chinese collaborators. Until it is answered, shipping such a
- *     phrase would mean drilling learners against a guess. The test
+ *   - No phrase contains FOUR or more consecutive citation-T3 syllables.
+ *     resolveSandhi() still flags those as a genuine prosodic-domain
+ *     ambiguity (Shih 1986) and refuses to guess. Three-long runs ARE
+ *     included now: our Chinese collaborators confirmed that `wo3 ye3 hen3`
+ *     is acceptable as either `wo2 ye2 hen3` or `wo3 ye2 hen3`, so the
+ *     penultimate rise is obligatory and only the run-initial syllable
+ *     varies. Those phrases therefore carry `acceptedTones` with two
+ *     options at that position, and the scorer accepts either. The test
  *     asserts resolveSandhi() returns zero flags for everything here.
  *
  *   - Neutral-tone syllables (`tone: 0`) are included, because they are
@@ -26,10 +28,18 @@
  * Field notes:
  *   pinyin         citation form, with diacritic (what the word "is")
  *   surfacePinyin  only when sandhi changes it (what the learner should SAY)
+ *   altPinyin      only for a genuinely optional position: the other
+ *                  equally-correct realization, shown as a hint
  *   base           tone-stripped syllable; the lookup key into targets.json
  *   tone           citation tone, 1-4, or 0 for neutral
  *   morph          'bu' | 'yi' | 'redup' where sandhi depends on lexical
  *                  identity rather than on adjacent tones alone
+ *
+ * Phrase-level fields:
+ *   surfaceTones   the realization to display, one tone per syllable
+ *   acceptedTones  present ONLY when some position is optional: every
+ *                  acceptable tone per position, displayed one first.
+ *                  Scorers must read this when present (see sandhi.js).
  */
 
 export const PHRASES = [
@@ -153,6 +163,34 @@ export const PHRASES = [
     surfaceTones: [4, 0, 3]
   },
   {
+    id: 'wo-hen-hao',
+    hanzi: '我很好',
+    gloss: "I'm well",
+    note: 'Three T3s: 很 must rise. 我 may rise or stay low — both are accepted.',
+    syllables: [
+      { pinyin: 'wǒ', altPinyin: 'wó', base: 'wo', tone: 3 },
+      { pinyin: 'hěn', surfacePinyin: 'hén', base: 'hen', tone: 3 },
+      { pinyin: 'hǎo', base: 'hao', tone: 3 }
+    ],
+    surfaceTones: [3, 2, 3],
+    acceptedTones: [[3, 2], [2], [3]]
+  },
+  {
+    id: 'wo-ye-hen-gao-xing',
+    hanzi: '我也很高兴',
+    gloss: "I'm glad too",
+    note: 'The phrase our collaborators ruled on: 很 must rise, 我 may go either way.',
+    syllables: [
+      { pinyin: 'wǒ', altPinyin: 'wó', base: 'wo', tone: 3 },
+      { pinyin: 'yě', surfacePinyin: 'yé', base: 'ye', tone: 3 },
+      { pinyin: 'hěn', base: 'hen', tone: 3 },
+      { pinyin: 'gāo', base: 'gao', tone: 1 },
+      { pinyin: 'xìng', base: 'xing', tone: 4 }
+    ],
+    surfaceTones: [3, 2, 3, 1, 4],
+    acceptedTones: [[3, 2], [2], [3], [1], [4]]
+  },
+  {
     id: 'zhong-guo-lao-shi',
     hanzi: '中国老师',
     gloss: 'Chinese teacher',
@@ -184,4 +222,19 @@ export function spokenPinyin (phrase, i) {
 /** True when sandhi moved this syllable off its dictionary tone. */
 export function isSandhi (phrase, i) {
   return phrase.surfaceTones[i] !== phrase.syllables[i].tone;
+}
+
+/**
+ * Every acceptable tone for syllable i, displayed one first. Falls back to
+ * the single displayed tone for phrases with no optional positions, so
+ * callers can always treat the result as an array.
+ */
+export function acceptedFor (phrase, i) {
+  const a = phrase.acceptedTones && phrase.acceptedTones[i];
+  return (a && a.length) ? a : [phrase.surfaceTones[i]];
+}
+
+/** True when this position accepts more than one realization. */
+export function isOptional (phrase, i) {
+  return acceptedFor(phrase, i).length > 1;
 }

@@ -205,6 +205,14 @@ export const COMPONENT_CSS = `
 
 .chip .mark { font-size: 0.78rem; color: var(--muted); }
 
+/* Optional-realization hint (both forms are correct). Muted and italic so
+   it reads as "also fine", not as a second thing to produce. */
+.chip .alt {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* ---- controls ---- */
 
 .controls {

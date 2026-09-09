@@ -209,6 +209,11 @@ export function segmentSyllablesGuided (prep, targetTones, normalizer, opts = {}
   // rather than treating "unscoreable" as merely neutral.
   const GATE_FAIL_SCORE = -1;
   const NEUTRAL_SCORE = 0;
+  // Optional realizations per position (sandhi.js's acceptedTones). Where a
+  // position genuinely accepts more than one tone, the boundary search must
+  // not commit to one of them — otherwise a learner producing the other
+  // legitimate form gets worse boundaries as well as a worse score.
+  const accepted = opts.acceptedTones || null;
   const scoreCache = new Map();
   const spanScore = (a, b, toneIdx) => {
     const key = a * (n + 1) + b; // a,b < n, collision-free
@@ -226,9 +231,19 @@ export function segmentSyllablesGuided (prep, targetTones, normalizer, opts = {}
     // so its own extent is unconstrained by the search. Voicing still counts:
     // a gate-failing span scores GATE_FAIL_SCORE even at a neutral index, so
     // the DP won't hand a neutral position a dead span when a live one exists.
-    const s = !f.voiced
-      ? GATE_FAIL_SCORE
-      : (targetTones[toneIdx] === 0 ? NEUTRAL_SCORE : classify(targetTones[toneIdx], f).targetScore);
+    const options = (accepted && accepted[toneIdx]) || [targetTones[toneIdx]];
+    let s;
+    if (!f.voiced) {
+      s = GATE_FAIL_SCORE;
+    } else {
+      // Best over the accepted realizations: whichever the learner actually
+      // produced is the one this span should be judged by.
+      s = -Infinity;
+      for (const tone of options) {
+        const x = tone === 0 ? NEUTRAL_SCORE : classify(tone, f).targetScore;
+        if (x > s) s = x;
+      }
+    }
     byTone.set(toneIdx, s);
     return s;
   };

@@ -27,8 +27,8 @@ export const UNCERTAIN_REASON_TEXT = {
 // re-exported here so a host app can get everything it needs for result
 // handling from one import. They take a phrase object, so they work on a
 // host's own curriculum, not just the bundled PHRASES.
-export { spokenPinyin, isSandhi } from './phrases.js';
-import { spokenPinyin, isSandhi } from './phrases.js';
+export { spokenPinyin, isSandhi, acceptedFor, isOptional } from './phrases.js';
+import { spokenPinyin, isSandhi, acceptedFor, isOptional } from './phrases.js';
 
 /**
  * Tally an utterance's verdicts, counting only SCORED syllables: neutral
@@ -111,6 +111,13 @@ export function buildAttemptDetail (
         base: syl.base,
         citationTone: syl.tone,
         surfaceTone: phrase.surfaceTones[i],
+        // Every realization that would have been accepted, and the one the
+        // learner actually produced. For an optional position (a 3-long T3
+        // run's first syllable) these differ, and an outcome analysis needs
+        // to know WHICH form was produced, not just that it passed.
+        acceptedTones: acceptedFor(phrase, i),
+        optional: isOptional(phrase, i),
+        matchedTone: v && v.matchedTone !== undefined ? v.matchedTone : null,
         sandhi: isSandhi(phrase, i),
         neutral: phrase.surfaceTones[i] === 0,
         voiced: f ? !!f.voiced : false,
