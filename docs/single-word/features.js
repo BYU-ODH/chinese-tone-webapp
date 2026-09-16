@@ -468,6 +468,17 @@ export function extractSyllableFeatures (prep, span, normalizer) {
     registerTrusted,
     voicedFrameCount: voicedCount,
     vowelCoreFrames: core.end - core.start,
+    // Absolute time window the Legendre fit was taken over — i.e. the window
+    // `coefs`, `onset` and `offset` are all expressed in normalized time
+    // across. Exposed because it is NOT recoverable from anything else here
+    // (the core is chosen by intensity + HNR inside the span, and only its
+    // frame COUNT survives above), and a caller that has to reproduce this
+    // measurement needs it: pitch-correct.js lays the target contour over
+    // exactly this window so that re-measuring the corrected audio returns
+    // the target coefficients rather than a slope diluted by the span's
+    // quieter shoulders.
+    coreStartTime: coreTimes.length ? coreTimes[0] : voicedTimes[0],
+    coreEndTime: coreTimes.length ? coreTimes[coreTimes.length - 1] : voicedTimes[voicedTimes.length - 1],
     voicedDuration: voicedDur,
     duration,
     medianHz,
@@ -496,7 +507,10 @@ export function extractFeatures (analysis, normalizer) {
   }
   const f = extractSyllableFeatures(prep, prep.speechSpan, normalizer);
   if (!f.voiced) return f;
-  return { ...f, rawVoicedFrameCount: prep.rawVoicedCount };
+  // `span` mirrors utterance.js's `spans`, and for the same reason: a caller
+  // acting on the syllable's TIME EXTENT rather than its contour (see
+  // pitch-correct.js) can't recover the frame range from anything else here.
+  return { ...f, span: prep.speechSpan, rawVoicedFrameCount: prep.rawVoicedCount };
 }
 
 /**

@@ -21,9 +21,10 @@
  */
 
 import { createRecorder, encodeWav } from './audio.js';
-import { ensureReady, analyzeWav } from './praat-engine.js';
+import { ensureReady, analyzeWav, resynthesizeWithPitch } from './praat-engine.js';
 import { ensureDenoiseReady, denoise } from './denoise.js';
 import { extractFeatures, SpeakerNormalizer } from './features.js';
+import { buildCorrectedPitchPointsForSyllable } from './pitch-correct.js';
 import { classify } from './classifier.js';
 import { render, renderTargetOnly } from './viz.js';
 import { loadTargets, getSyllableTargets } from './targets.js';
@@ -52,6 +53,8 @@ const state = {
   normalizer: new SpeakerNormalizer(),
   wordIdx: 0,
   lastWavBlob: null,
+  correction: null,          // pitch points for the last attempt, or null
+  correctedWavBlob: null,    // resynthesis result, built on first play
   micMeterRaf: 0,
   ready: false,
   // CalibrationSession while a pass is running, else null. The sequencing
@@ -78,6 +81,7 @@ const els = {
   canvas: $('contour-canvas'),
   recordBtn: $('record-btn'),
   playBtn: $('play-btn'),
+  playFixedBtn: $('play-fixed-btn'),
   micMeter: $('mic-meter').firstElementChild,
   feedback: $('feedback'),
   errorPanel: $('error-panel'),
@@ -245,6 +249,7 @@ function bindPracticeHandlers () {
     startMicMeter();
     els.feedback.innerHTML = '';
     els.playBtn.disabled = true;
+    clearCorrection();
   };
 
   const onRecordStop = async () => {
@@ -294,6 +299,21 @@ function bindPracticeHandlers () {
           return;
         }
 
+        // Corrected-playback contour, built BEFORE the normalizer is updated
+        // below so it is anchored on the register this attempt was scored
+        // against — the same ordering, and the same reason, as the phrase
+        // trainer's. Only the pitch points are computed here; the resynthesis
+        // waits for a click (see playCorrected), so an attempt nobody asks to
+        // hear costs nothing. Not offered during calibration: those prompts
+        // aren't graded, so there is no verdict for a correction to belong to.
+        if (!isCalibrating()) {
+          state.correction = buildCorrectedPitchPointsForSyllable(
+            analysis, features, target, state.normalizer);
+          state.correctedWavBlob = null;
+          els.playFixedBtn.disabled = !state.correction || !state.lastWavBlob;
+          els.playFixedBtn.textContent = 'Play your corrected voice';
+        }
+
         // Update the running speaker reference with the filtered
         // subset of voiced frames (steady-state, loud, no octave errors).
         // The target tone feeds the trust gate's tone-diversity check.
@@ -317,16 +337,60 @@ function bindPracticeHandlers () {
   bindHold(els.recordBtn, onRecordStart, onRecordStop);
   bindSpacebarHold(els.recordBtn, onRecordStart, onRecordStop);
 
-  els.playBtn.addEventListener('click', () => {
-    if (!state.lastWavBlob) return;
-    const url = URL.createObjectURL(state.lastWavBlob);
-    const audio = new Audio(url);
-    audio.addEventListener('ended', () => URL.revokeObjectURL(url));
-    audio.play().catch(err => {
-      URL.revokeObjectURL(url);
-      console.error('Playback failed:', err);
-    });
+  els.playBtn.addEventListener('click', () => play(state.lastWavBlob));
+  els.playFixedBtn.addEventListener('click', playCorrected);
+}
+
+/** Shared one-shot playback; revokes the object URL when it finishes. */
+function play (blob) {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+  audio.play().catch(err => {
+    URL.revokeObjectURL(url);
+    console.error('Playback failed:', err);
   });
+}
+
+/*
+ * Play the learner's own recording with the tone corrected: same voice,
+ * same timing, same word, F0 replaced by the target contour drawn on the
+ * canvas (docs/single-word/pitch-correct.js has the rules for what is and
+ * isn't corrected). Resynthesized lazily on first request and cached, so
+ * the cost lands on the learner who asks for it.
+ */
+async function playCorrected () {
+  if (!state.correction || !state.lastWavBlob) return;
+  if (state.correctedWavBlob) { play(state.correctedWavBlob); return; }
+
+  const btn = els.playFixedBtn;
+  btn.disabled = true;
+  btn.textContent = 'Correcting…';
+  try {
+    // resynthesizeWithPitch TRANSFERS its buffer to the worker, so this has
+    // to be a fresh copy from the Blob — the original capture buffer was
+    // already detached by the analysis pass.
+    const source = await state.lastWavBlob.arrayBuffer();
+    const wav = await resynthesizeWithPitch(source, state.correction.points);
+    state.correctedWavBlob = new Blob([wav], { type: 'audio/wav' });
+    btn.textContent = 'Play your corrected voice';
+    btn.disabled = false;
+    play(state.correctedWavBlob);
+  } catch (err) {
+    console.error('Pitch correction failed:', err);
+    // Say so rather than leaving a button that silently does nothing; the
+    // next attempt re-enables it.
+    btn.textContent = 'Correction unavailable';
+  }
+}
+
+/** Drop any corrected audio and the points it would be built from. */
+function clearCorrection () {
+  state.correction = null;
+  state.correctedWavBlob = null;
+  els.playFixedBtn.disabled = true;
+  els.playFixedBtn.textContent = 'Play your corrected voice';
 }
 
 function showVerdict (v, targetTone) {
@@ -384,6 +448,7 @@ function refreshWord () {
   els.feedback.innerHTML = '';
   els.playBtn.disabled = true;
   state.lastWavBlob = null;
+  clearCorrection();
   renderTargetOnly(els.canvas, currentTarget(w));
 }
 

@@ -34,11 +34,18 @@ import { classify } from './classifier.js';
  *   acceptable realization per position. Passed through to the boundary
  *   search so a genuinely optional position (a 3-long T3 run's first
  *   syllable) isn't scored against one arbitrary choice.
- * @returns {{voiced:boolean, reason?:string, syllables?:object[], segmentation?:{method:string}}}
+ * @returns {{voiced:boolean, reason?:string, syllables?:object[],
+ *   spans?:{start:number,end:number}[], segmentation?:{method:string}}}
  *   syllables[i] is extractSyllableFeatures()'s per-span struct (each
  *   independently .voiced true/false), in time order. segmentation.method
  *   is 'guided' or 'even-split' (see segmentation.js) so callers/UI can
  *   flag a best-guess split rather than presenting it as confidently exact.
+ *   spans[i] is the inclusive pitch-frame range syllables[i] was extracted
+ *   from — returned because a caller that wants to act on a syllable's
+ *   TIME EXTENT (pitch-correct.js, which rewrites F0 over exactly the span
+ *   the target band was drawn across) cannot recover it from the feature
+ *   struct: an unvoiced syllable carries no contour at all, and a voiced
+ *   one only carries frames, not the boundaries they were chosen from.
  */
 export function extractUtteranceFeatures (analysis, normalizer, targetTones, acceptedTones = null) {
   const prep = prepUtterance(analysis);
@@ -62,7 +69,7 @@ export function extractUtteranceFeatures (analysis, normalizer, targetTones, acc
   const { spans, method } = segmentSyllablesGuided(prep, targetTones, normalizer, { acceptedTones });
   const syllables = spans.map(span => extractSyllableFeatures(prep, span, normalizer));
 
-  return { voiced: true, syllables, segmentation: { method } };
+  return { voiced: true, syllables, spans, segmentation: { method } };
 }
 
 /**

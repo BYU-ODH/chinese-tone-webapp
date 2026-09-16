@@ -17,6 +17,18 @@
  * period-counting pass) for zero downstream signal. Dropped 2026-07-22.
  */
 
+/*
+ * Pitch tracking range, shared by every Praat pass in this file. The
+ * resynthesis pass (buildResynthesisScript) MUST use the same range as the
+ * analysis pass: it re-derives the pulse train that carries the corrected
+ * contour, and a mismatch there would mean the pitch we measured and the
+ * pitch we can re-impose disagree at exactly the edges of the range (creaky
+ * T3 at the floor, excited T1/T4 onsets at the ceiling) where tone feedback
+ * matters most.
+ */
+export const PITCH_FLOOR_HZ = 75;
+export const PITCH_CEILING_HZ = 600;
+
 /**
  * Praat script: given a selected Sound, emit structured analysis output.
  * Output format is a sequence of key/value lines and "values...endvalues"
@@ -36,7 +48,7 @@ appendInfoLine: "SAMPLERATE ", fixed$(sr, 1)
 #       voicingThreshold, octaveCost, octaveJumpCost, voicedUnvoicedCost,
 #       ceiling
 selectObject: ${soundId}
-To Pitch (ac): 0.005, 75, 15, "no", 0.01, 0.30, 0.01, 0.35, 0.14, 600
+To Pitch (ac): 0.005, ${PITCH_FLOOR_HZ}, 15, "no", 0.01, 0.30, 0.01, 0.35, 0.14, ${PITCH_CEILING_HZ}
 pitchId = selected("Pitch")
 nFrames = Get number of frames
 dx = Get time step
@@ -59,7 +71,7 @@ removeObject: pitchId
 
 # --- Intensity ---
 selectObject: ${soundId}
-To Intensity: 75, 0.005, "yes"
+To Intensity: ${PITCH_FLOOR_HZ}, 0.005, "yes"
 intensityId = selected("Intensity")
 nIntFrames = Get number of frames
 intDx = Get time step
@@ -83,7 +95,7 @@ removeObject: intensityId
 # --- Harmonicity (HNR) ---
 # Time step matches pitch (0.005) so the per-frame contour aligns with F0.
 selectObject: ${soundId}
-To Harmonicity (cc): 0.005, 75, 0.1, 1.0
+To Harmonicity (cc): 0.005, ${PITCH_FLOOR_HZ}, 0.1, 1.0
 hnrId = selected("Harmonicity")
 hnrMean = Get mean: 0, 0
 if hnrMean = undefined
@@ -174,4 +186,67 @@ export function parseAnalysisOutput (text) {
   }
 
   return out;
+}
+
+/**
+ * Praat script: impose an explicit pitch contour on a Sound and resynthesize,
+ * writing the result to `outPath` inside the WASM filesystem.
+ *
+ * This is PSOLA pitch manipulation, not synthesis: the Manipulation object
+ * decomposes the recording into a pulse train plus the original spectral
+ * envelope, the pulse train is retimed to follow the new PitchTier, and
+ * overlap-add puts it back together. The learner's own voice — timbre,
+ * timing, loudness, every segmental detail — survives untouched; only F0
+ * moves. That is the whole point of the feature: "this is what YOU sound
+ * like when the tones are right", not "this is what a native speaker sounds
+ * like", which the learner already gets from a reference recording and
+ * consistently fails to map onto their own voice.
+ *
+ * Unvoiced stretches stay unvoiced regardless of what the tier says over
+ * them: there are no pulses there to retime. So the point list can (and
+ * does) span the whole utterance without having to carve consonants out.
+ *
+ * @param {number} soundId   Praat object id of the loaded Sound
+ * @param {{time:number, hz:number}[]} points  the target contour, in time
+ *   order. Praat interpolates linearly between points, so a dense list
+ *   (one per analysis frame — see pitch-correct.js) reproduces the curve
+ *   exactly rather than approximating it with line segments.
+ * @param {string} outPath   WASM-filesystem path for the resulting WAV
+ */
+export function buildResynthesisScript (soundId, points, outPath = '/tmp/corrected.wav') {
+  if (!Array.isArray(points) || points.length < 2) {
+    throw new Error('buildResynthesisScript: need at least two pitch points.');
+  }
+  const addPoints = points
+    .map(p => `Add point: ${p.time.toFixed(6)}, ${p.hz.toFixed(3)}`)
+    .join('\n');
+
+  return `
+writeInfoLine: "BEGIN"
+selectObject: ${soundId}
+duration = Get total duration
+
+# Manipulation's own pitch range must match the analysis pass (see the
+# PITCH_FLOOR_HZ / PITCH_CEILING_HZ comment above).
+To Manipulation: 0.01, ${PITCH_FLOOR_HZ}, ${PITCH_CEILING_HZ}
+manId = selected("Manipulation")
+
+Create PitchTier: "corrected", 0, duration
+tierId = selected("PitchTier")
+${addPoints}
+
+selectObject: manId
+plusObject: tierId
+Replace pitch tier
+
+selectObject: manId
+Get resynthesis (overlap-add)
+outId = selected("Sound")
+Save as WAV file: ${JSON.stringify(outPath)}
+
+removeObject: manId
+removeObject: tierId
+removeObject: outId
+appendInfoLine: "END"
+`;
 }

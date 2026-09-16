@@ -15,9 +15,15 @@
  *   silence threshold 0.01 (default 0.03 cuts low-energy creaky regions)
  */
 
-import { buildAnalysisScript, parseAnalysisOutput } from './praat-analysis.js';
+import {
+  buildAnalysisScript, parseAnalysisOutput, buildResynthesisScript
+} from './praat-analysis.js';
 
 const PRAAT_VERSION = '6.4.6200';
+// Fixed path inside the WASM filesystem for resynthesis output. Reused
+// rather than uniquified so repeated corrections overwrite one file
+// instead of growing MEMFS by a WAV per click for the whole session.
+const RESYNTH_PATH = '/tmp/corrected.wav';
 const CDN_BASE = `https://cdn.jsdelivr.net/npm/praat-wasm@${PRAAT_VERSION}`;
 
 let workerPromise = null;
@@ -76,6 +82,36 @@ export async function analyzeWav (wavBuffer) {
     return parseAnalysisOutput(text);
   } finally {
     // Clean up so objects don't accumulate across recordings.
+    await worker.removeAll();
+  }
+}
+
+/**
+ * Re-voice a recording onto an explicit pitch contour and return the result
+ * as a WAV ArrayBuffer. `points` is [{time, hz}, ...] in time order — see
+ * pitch-correct.js, which builds it from a scored utterance.
+ *
+ * Nothing but F0 changes: this is PSOLA resynthesis of the learner's own
+ * audio (see buildResynthesisScript), so the returned WAV is still their
+ * voice, their timing and their words.
+ *
+ * As with analyzeWav, `wavBuffer` is TRANSFERRED to the worker and is
+ * detached on this thread afterwards — pass a buffer you don't still need.
+ */
+export async function resynthesizeWithPitch (wavBuffer, points) {
+  const worker = await getWorker();
+  const sound = await worker.readAudio(wavBuffer, '/tmp/resynth-in.wav');
+  if (!sound || sound.id == null) {
+    throw new Error('Praat could not load the recorded audio.');
+  }
+  try {
+    await worker.run(buildResynthesisScript(sound.id, points, RESYNTH_PATH));
+    const bytes = await worker.getFile(RESYNTH_PATH);
+    if (!bytes || bytes.byteLength === 0) {
+      throw new Error('Praat produced no corrected audio.');
+    }
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  } finally {
     await worker.removeAll();
   }
 }

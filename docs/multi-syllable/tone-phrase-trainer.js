@@ -25,7 +25,8 @@
  * ATTRIBUTES
  *   phrase-index    initial/current phrase index (reflected both ways)
  *   hide-nav        hide the built-in prev/next buttons
- *   hide-playback   hide the "play your voice" button
+ *   hide-playback   hide BOTH playback buttons ("play your voice" and
+ *                   "play your corrected voice")
  *   defer           do NOT load the analysis engine on connect; the host
  *                   calls load() when it wants the (~30MB WASM) download
  *   skip-calibration  do not run the calibration pass on load (the host
@@ -47,13 +48,17 @@
  *   load()             boot the engine; idempotent, returns a Promise
  *   next() / prev()    move through the curriculum (wraps)
  *   reset()            clear the current attempt's feedback
+ *   playRecording()    play the last recording back, untouched
+ *   playCorrected()    play the last recording with the tones corrected;
+ *                      resolves once playback has been started. No-op when
+ *                      there is nothing correctable (see below)
  *   startCalibration() run a calibration pass now (forces one even if the
  *                      normalizer is already calibrated)
  *   skipCalibration()  abandon the running pass
  *
  * EVENTS (all bubble and cross the shadow boundary)
  *   ready          engine loaded, component usable
- *   error          {message} — engine boot or mic failure
+ *   error          {message} — engine boot, mic, or resynthesis failure
  *   phrasechange   {index, phrase}
  *   attempt        the full scored result — see buildAttemptDetail() for the
  *                  payload. This is the hook an experiment app records.
@@ -74,6 +79,24 @@
  *   - The speaker normalizer is updated once, AFTER the whole utterance has
  *     been classified (commitUtteranceToNormalizer), so an utterance is
  *     scored against the register as it stood before it began.
+ *   - After a scored attempt the learner can hear their OWN recording with
+ *     the tones corrected ("play your corrected voice"). This is PSOLA
+ *     manipulation of their own audio, not a native-speaker model: voice,
+ *     timing and words are untouched and only F0 moves, so the learner is
+ *     comparing against something they can actually imitate — themselves.
+ *     The contour imposed is the target the syllable was scored against,
+ *     anchored the way the score was anchored, so the audio and the mark
+ *     cannot disagree (docs/single-word/pitch-correct.js has the full
+ *     rules). That is also the canvas band everywhere except a genuinely
+ *     optional sandhi position, where the canvas shows the surface form but
+ *     the correction follows the form the learner was credited for. It
+ *     corrects
+ *     PITCH ONLY: the classifier also weighs duration (T4 is the short
+ *     tone, T3 the long one), so a corrected syllable held far too long can
+ *     still be scored wrong — the feature does not, and should not, retime
+ *     the learner's speech. The button stays disabled when there is nothing
+ *     honest to correct: an unscored utterance, or a phrase whose every
+ *     syllable is neutral.
  *   - A calibration pass runs before any phrase work (one "ma" per tone),
  *     using the SAME CalibrationSession the single-word app uses
  *     (../single-word/calibration.js) so the two flows cannot drift. It is
@@ -87,7 +110,7 @@
  */
 
 import { createRecorder, encodeWav } from '../single-word/audio.js';
-import { ensureReady, analyzeWav } from '../single-word/praat-engine.js';
+import { ensureReady, analyzeWav, resynthesizeWithPitch } from '../single-word/praat-engine.js';
 import { ensureDenoiseReady, denoise } from '../single-word/denoise.js';
 import { SpeakerNormalizer, extractFeatures } from '../single-word/features.js';
 import { CalibrationSession, shouldCalibrate } from '../single-word/calibration.js';
@@ -95,6 +118,7 @@ import {
   extractUtteranceFeatures, classifyUtterance, commitUtteranceToNormalizer
 } from '../single-word/utterance.js';
 import { renderUtterance } from '../single-word/viz.js';
+import { buildCorrectedPitchPoints } from '../single-word/pitch-correct.js';
 import { loadTargets, getSyllableTargets } from '../single-word/targets.js';
 import { PHRASES, spokenPinyin, isSandhi, acceptedFor, isOptional } from './phrases.js';
 import {
@@ -137,6 +161,8 @@ const TEMPLATE = `
       <span data-el="record-label">Hold to speak</span>
     </button>
     <button class="ghost-btn" data-el="play" type="button" disabled>Play your voice</button>
+    <button class="ghost-btn" data-el="play-fixed" type="button" disabled
+      title="Hear your own recording with the tones corrected">Play your corrected voice</button>
   </div>
 
   <div class="mic-meter" aria-hidden="true"><div data-el="meter"></div></div>
@@ -165,6 +191,8 @@ export class TonePhraseTrainer extends HTMLElement {
     this._normalizer = new SpeakerNormalizer();
     this._recorder = null;
     this._lastWavBlob = null;
+    this._correction = null;        // pitch points for the last attempt, or null
+    this._correctedWavBlob = null;  // resynthesis result, built on first play
     this._meterRaf = 0;
     this._ready = false;
     this._loadPromise = null;
@@ -230,7 +258,10 @@ export class TonePhraseTrainer extends HTMLElement {
     if (this.getAttribute('phrase-index') !== String(next)) {
       this.setAttribute('phrase-index', String(next));
     }
-    if (this._built) { this._render(); this._emitPhraseChange(); }
+    // Corrected audio is tied to the phrase it was built for. Leaving it
+    // playable after a phrase change would offer the learner "your voice,
+    // corrected" for a phrase they are no longer looking at.
+    if (this._built) { this._clearCorrection(); this._render(); this._emitPhraseChange(); }
   }
 
   get phrase () { return this._phrases[this._index] || null; }
@@ -287,6 +318,7 @@ export class TonePhraseTrainer extends HTMLElement {
     this._lastWavBlob = null;
     this._lastAttempt = null;
     this._els.play.disabled = true;
+    this._clearCorrection();
     this._els.summary.textContent = '';
     this._els.warn.classList.add('hidden');
     this._render();
@@ -307,6 +339,7 @@ export class TonePhraseTrainer extends HTMLElement {
     root.querySelectorAll('[data-el]').forEach(n => {
       this._els[n.dataset.el] = n;
     });
+    this._els.playFixed = this._els['play-fixed'];
     this._els.calibSkip = this._els['calib-skip'];
     this._els.calibProgress = this._els['calib-progress'];
     this._els.prev = root.querySelector('[data-nav="prev"]');
@@ -315,7 +348,8 @@ export class TonePhraseTrainer extends HTMLElement {
 
     this._els.prev.addEventListener('click', () => this.prev());
     this._els.next.addEventListener('click', () => this.next());
-    this._els.play.addEventListener('click', () => this._playback());
+    this._els.play.addEventListener('click', () => this.playRecording());
+    this._els.playFixed.addEventListener('click', () => this.playCorrected());
     this._els.calibSkip.addEventListener('click', () => this.skipCalibration());
 
     this._bindHold();
@@ -332,7 +366,9 @@ export class TonePhraseTrainer extends HTMLElement {
     const hideNav = this.hasAttribute('hide-nav');
     this._els.prev.classList.toggle('hidden', hideNav);
     this._els.next.classList.toggle('hidden', hideNav);
-    this._els.play.classList.toggle('hidden', this.hasAttribute('hide-playback'));
+    const hidePlayback = this.hasAttribute('hide-playback');
+    this._els.play.classList.toggle('hidden', hidePlayback);
+    this._els.playFixed.classList.toggle('hidden', hidePlayback);
   }
 
   /*
@@ -421,6 +457,7 @@ export class TonePhraseTrainer extends HTMLElement {
     this._els.summary.textContent = '';
     this._els.warn.classList.add('hidden');
     this._els.play.disabled = true;
+    this._clearCorrection();
   }
 
   _startMeter () {
@@ -495,6 +532,33 @@ export class TonePhraseTrainer extends HTMLElement {
     }
 
     const verdicts = classifyUtterance(res.syllables, surface, accepted);
+    const targets = phrase.syllables.map((_s, i) => this._targetFor(phrase, i));
+
+    // Built here, BEFORE the normalizer is committed below, for the same
+    // reason the scoring is: the corrected audio must be anchored on the
+    // register as it stood when this utterance began, so what the learner
+    // hears agrees with the mark and the contour they were just shown. Only
+    // the pitch points are computed now — the resynthesis itself is deferred
+    // to the first click (see playCorrected), so an attempt nobody asks to
+    // hear costs nothing.
+    // Corrected toward the realization each syllable was SCORED against, not
+    // blindly toward the displayed surface tone. They differ only where
+    // sandhi leaves a position genuinely optional (a 3-long T3 run's first
+    // syllable, which may be produced as T3 or T2 — see sandhi.js), and
+    // there the difference matters: a learner who produced the accepted
+    // alternative and was marked correct for it must not then hear their
+    // correct production "corrected" into the other form.
+    const correctionTargets = phrase.syllables.map((_s, i) => {
+      const matched = verdicts[i] && verdicts[i].matchedTone;
+      return this._targetFor(phrase, i, matched || surface[i]);
+    });
+    this._correction =
+      buildCorrectedPitchPoints(analysis, res, correctionTargets, this._normalizer);
+    this._correctedWavBlob = null;
+    this._els.playFixed.disabled =
+      !this._correction || !this._lastWavBlob || this.hasAttribute('hide-playback');
+    this._els.playFixed.textContent = 'Play your corrected voice';
+
     // Register update happens once, after the whole utterance is scored,
     // labelled with the tone actually produced rather than the displayed
     // one — that label feeds the normalizer's tone-diversity gate.
@@ -502,7 +566,7 @@ export class TonePhraseTrainer extends HTMLElement {
       (v && v.matchedTone !== undefined && v.matchedTone !== null) ? v.matchedTone : surface[i]);
     commitUtteranceToNormalizer(this._normalizer, res.syllables, producedTones);
 
-    this._paint(phrase, res, verdicts);
+    this._paint(phrase, res, verdicts, targets);
     this._updateStatusRow();
     this._emitAttempt(phrase, res.syllables, verdicts, res, durationSec);
   }
@@ -611,14 +675,17 @@ export class TonePhraseTrainer extends HTMLElement {
     else this._renderPhrase();
   }
 
-  /** Target {tone, coefs} for syllable i, or null for a neutral syllable. */
-  _targetFor (phrase, i) {
-    const surfaceTone = phrase.surfaceTones[i];
-    if (surfaceTone === 0) return null;
-    // The band is the SURFACE tone's shape — the acoustically correct thing
-    // to aim at — not the citation tone's.
-    const entry = getSyllableTargets(phrase.syllables[i].base)[surfaceTone];
-    return entry ? { tone: surfaceTone, coefs: entry.coefs, source: entry.source } : null;
+  /**
+   * Target {tone, coefs} for syllable i, or null for a neutral syllable.
+   * `tone` defaults to the surface tone — the band is the SURFACE tone's
+   * shape, the acoustically correct thing to aim at, not the citation
+   * tone's — and is overridden only by the pitch correction, which aims at
+   * the realization the learner was actually scored against.
+   */
+  _targetFor (phrase, i, tone = phrase.surfaceTones[i]) {
+    if (tone === 0) return null;
+    const entry = getSyllableTargets(phrase.syllables[i].base)[tone];
+    return entry ? { tone, coefs: entry.coefs, source: entry.source } : null;
   }
 
   /** Idle: phrase text, target bands only, chips with no verdict yet. */
@@ -649,9 +716,9 @@ export class TonePhraseTrainer extends HTMLElement {
   }
 
   /** After an attempt: contours over bands, chips carrying verdicts. */
-  _paint (phrase, res, verdicts) {
+  _paint (phrase, res, verdicts, targets) {
     const entries = phrase.syllables.map((_s, i) => {
-      const t = this._targetFor(phrase, i);
+      const t = targets[i];
       return {
         tone: t ? t.tone : 0,
         coefs: t ? t.coefs : null,
@@ -716,15 +783,67 @@ export class TonePhraseTrainer extends HTMLElement {
       : 'Pitch range: still learning (shape only)';
   }
 
-  _playback () {
-    if (!this._lastWavBlob) return;
-    const url = URL.createObjectURL(this._lastWavBlob);
+  /** Play back the raw recording, exactly as captured. */
+  playRecording () {
+    this._play(this._lastWavBlob);
+  }
+
+  /**
+   * Play the learner's own recording with the tones corrected: same voice,
+   * same timing, same words, F0 replaced by the target contour they were
+   * just shown (see pitch-correct.js for what is and isn't corrected).
+   *
+   * The resynthesis is done lazily on first request and cached, so the cost
+   * lands on the learner who asks for it rather than on every attempt. It
+   * runs in the Praat worker, so it doesn't block the UI — but it isn't
+   * instant either, hence the button state while it works.
+   */
+  async playCorrected () {
+    if (!this._correction || !this._lastWavBlob) return;
+    if (this._correctedWavBlob) { this._play(this._correctedWavBlob); return; }
+
+    const btn = this._els.playFixed;
+    btn.disabled = true;
+    btn.textContent = 'Correcting…';
+    try {
+      // analyzeWav TRANSFERS its buffer to the worker, so this must be a
+      // fresh copy of the blob rather than the original capture buffer,
+      // which was detached during scoring.
+      const source = await this._lastWavBlob.arrayBuffer();
+      const wav = await resynthesizeWithPitch(source, this._correction.points);
+      this._correctedWavBlob = new Blob([wav], { type: 'audio/wav' });
+      btn.textContent = 'Play your corrected voice';
+      btn.disabled = false;
+      this._play(this._correctedWavBlob);
+    } catch (err) {
+      console.error('Pitch correction failed:', err);
+      // Leave the button disabled and say so rather than silently doing
+      // nothing: a dead button the learner keeps pressing is worse than an
+      // honest one. The next attempt re-enables it.
+      btn.textContent = 'Correction unavailable';
+      this._emit('error', { message: err.message || String(err) });
+    }
+  }
+
+  /** Shared one-shot playback; revokes the object URL when it finishes. */
+  _play (blob) {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     audio.addEventListener('ended', () => URL.revokeObjectURL(url));
     audio.play().catch(err => {
       URL.revokeObjectURL(url);
       console.error('Playback failed:', err);
     });
+  }
+
+  /** Drop any corrected audio and the points it would be built from. */
+  _clearCorrection () {
+    this._correction = null;
+    this._correctedWavBlob = null;
+    if (!this._built) return;
+    this._els.playFixed.disabled = true;
+    this._els.playFixed.textContent = 'Play your corrected voice';
   }
 
   _showError (msg) {
