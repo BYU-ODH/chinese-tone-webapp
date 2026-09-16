@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ lesson.title }} — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="page__head">
+  <div>
+    <h1 class="page__title">Today's Lesson</h1>
+    <p class="page__subtitle">Lesson {{ lesson.number }}: {{ lesson.title }}</p>
+  </div>
+  <p style="font-size:32px;margin:0">{{ today|date:"l, F j" }}</p>
+</div>
+
+<div style="display:flex;gap:48px;align-items:flex-start;margin-top:56px;flex-wrap:wrap">
+  <section class="card">
+    <h2 class="list-heading">Vocabulary</h2>
+    <div class="vocab">
+      {% for item in words %}
+        <span class="vocab__hanzi">{{ item.hanzi }}</span>
+        <span>{{ item.pinyin_display }}</span>
+        <span class="vocab__gloss">{{ item.gloss }}</span>
+      {% empty %}
+        <p class="muted" style="grid-column:1/-1">No vocabulary yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card" style="max-width:451px">
+    <h2 class="list-heading">Sentences</h2>
+    <div class="sentences">
+      {% for item in sentences %}
+        <div class="sentence">
+          <div>
+            <p class="sentence__hanzi" style="margin:0">{{ item.hanzi }}</p>
+            <p class="sentence__pinyin" style="margin:0">{{ item.pinyin_display }}</p>
+          </div>
+        </div>
+      {% empty %}
+        <p class="muted">No sentences yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:64px">
+  <form method="get" action="{% url 'start_session' lesson.slug %}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <button class="btn btn--plain" type="submit">Begin Practice</button>
+  </form>
+  <img src="{% static 'img/arrow-forward.svg' %}" alt="" width="71" height="71">
+</div>
+{% endblock %}

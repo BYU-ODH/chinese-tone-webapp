@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="split">
+  <div class="split__main">
+    <h1 class="page__title">DASHBOARD</h1>
+    <p class="page__subtitle">{{ today|date:"l, F j, Y" }}</p>
+
+    <div class="stack" style="margin-top:56px;max-width:451px">
+      <section class="card card--active">
+        <p class="card__eyebrow">Today's Lesson</p>
+        {% if todays_lesson %}
+          <p class="card__title">{{ todays_lesson.title }}</p>
+          <div class="card__cta">
+            <a class="btn" href="{% url 'lesson_detail' todays_lesson.slug %}?mode={{ todays_mode }}">
+              Start Tone Practice
+            </a>
+          </div>
+        {% else %}
+          <p class="card__title muted">Nothing scheduled today.</p>
+        {% endif %}
+      </section>
+
+      {% if previous_session %}
+        <section class="card">
+          <p class="card__eyebrow">Yesterday's Lesson</p>
+          <p class="card__title">{{ previous_session.lesson.title }}</p>
+          <div class="card__cta">
+            <a class="btn btn--block" href="{% url 'session_summary' previous_session.id %}">
+              See Summary
+            </a>
+          </div>
+        </section>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="split__aside">
+    {% include "partials/lesson_path.html" %}
+  </div>
+</div>
+{% endblock %}

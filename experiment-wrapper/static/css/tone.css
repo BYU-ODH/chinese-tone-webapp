@@ -1,0 +1,451 @@
+/*
+ * Tone Tiger design system.
+ *
+ * Every value here is lifted from the Figma file (node ids in comments where
+ * it helps). The Figma frames are absolutely positioned on a fixed 1440x1024
+ * canvas; this stylesheet reproduces the same visual language in flow layout
+ * so the pages survive a Chromebook's actual viewport. The one place absolute
+ * positioning is kept is the lesson path, which really is scattered art.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;700;900&family=Montserrat+Alternates:wght@300;400;700&display=swap");
+
+:root {
+  /* Brand */
+  --red: #da3a3a;          /* header bar, primary buttons, lesson nodes */
+  --red-soft: #da4f3a;     /* "Try Again" verdict */
+  --green: #08a300;        /* "Nice!" */
+  --amber: #ffaf03;        /* "Almost" */
+  --gold: #ffbf00;         /* coins, path dots, current pip */
+
+  /* Neutrals */
+  --grey-100: #f3f3f3;     /* progress track */
+  --grey-300: #d1d1d1;     /* secondary button, unattempted pip */
+  --grey-400: #d9d9d9;     /* locked lesson node */
+  --grey-500: #a0a0a0;     /* empty pip outline */
+  --grey-600: #787878;     /* diagnostic text */
+  --grey-700: #424242;     /* total-time text */
+
+  --sky: rgba(166, 240, 255, 0.69);
+
+  --font: "Montserrat", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Montserrat Alternates", var(--font);
+
+  --radius-card: 24px;
+  --radius-pill: 48px;
+  --shadow-card: 0 4px 18.9px 0 rgba(0, 0, 0, 0.2);
+  --shadow-panel: 0 2px 8.1px 1px rgba(0, 0, 0, 0.08);
+  --shadow-stage: 0 4px 20px -5px rgba(0, 0, 0, 0.2);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  font-family: var(--font);
+  color: #000;
+  min-height: 100%;
+}
+
+body {
+  /* Figma: linear gradient, sky -> white, white reached at 71.387%. */
+  background: linear-gradient(180deg, var(--sky) 0%, #fff 71.387%) no-repeat;
+  background-attachment: fixed;
+  background-color: #fff;
+}
+
+a { color: inherit; }
+
+/* ---------------------------------------------------------------- chrome */
+
+.appbar {
+  background: var(--red);
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 36px;
+  color: #fff;
+}
+.appbar__brand {
+  font-size: 24px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.appbar__links {
+  display: flex;
+  gap: 56px;
+  font-size: 24px;
+  font-weight: 500;
+}
+.appbar__links a { text-decoration: none; }
+.appbar__links a:hover { text-decoration: underline; }
+.appbar__account { width: 40px; height: 40px; display: block; }
+.appbar__coins {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 300;
+}
+
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 51px 48px 80px;
+}
+.page__title {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 400;
+  margin: 0;
+}
+.page__subtitle {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 12px 0 0;
+}
+.page__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* --------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 24px;
+  font-weight: 400;
+  padding: 12px 63px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover { filter: brightness(0.94); }
+.btn--lg { font-size: 32px; padding: 16px 32px; }
+.btn--block { width: 100%; }
+.btn--ghost {
+  background: var(--grey-300);
+  color: #000;
+  font-size: 20px;
+  padding: 16px 32px;
+}
+.btn--outline {
+  background: transparent;
+  color: #000;
+  border: 1px solid #000;
+  font-size: 20px;
+  padding: 16px 32px;
+}
+.btn--plain {
+  background: transparent;
+  color: #000;
+  font-size: 32px;
+  padding: 16px 24px;
+}
+.btn[disabled], .btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ----------------------------------------------------------------- cards */
+
+.card {
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  background: transparent;
+  padding: 32px 48px;
+}
+.card--active { border: 2px solid #000; }
+.card__eyebrow {
+  font-size: 24px;
+  font-weight: 300;
+  text-transform: uppercase;
+  margin: 0;
+}
+.card__title {
+  font-size: 24px;
+  font-weight: 500;
+  margin: 12px 0 0;
+}
+.card__cta { margin-top: 32px; }
+
+.panel {
+  background: #fff;
+  border-radius: 32px;
+  box-shadow: var(--shadow-panel);
+  padding: 44px 61px;
+}
+
+/* --------------------------------------------------- vocab / sentence lists */
+
+.vocab {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  gap: 24px;
+  font-size: 18px;
+  align-items: start;
+}
+.vocab--scored { grid-template-columns: 20px auto auto auto; }
+.vocab__hanzi { font-weight: 500; }
+.vocab__gloss { color: #000; }
+
+.sentences { display: flex; flex-direction: column; gap: 32px; font-size: 18px; }
+.sentences--scored .sentence { display: grid; grid-template-columns: 20px 1fr; gap: 16px; }
+.sentence__hanzi { font-weight: 500; }
+.sentence__pinyin { margin-top: 8px; }
+
+.list-heading { font-size: 24px; font-weight: 500; margin: 0 0 32px; }
+
+.dot--unscored { background: var(--grey-300) !important; }
+.dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--grey-300);
+  display: inline-block;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+/* ------------------------------------------------------------ lesson path */
+
+.path { position: relative; flex: 0 0 auto; }
+.path__node {
+  position: absolute;
+  z-index: 2;
+  width: 76px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+}
+.path__node img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.path__node span {
+  position: relative;
+  font-size: 32px;
+  font-weight: 900;
+  color: #fff;
+}
+.path__label {
+  position: absolute;
+  z-index: 2;
+  font-size: 24px;
+  font-weight: 300;
+  white-space: nowrap;
+}
+.path__dot { position: absolute; width: 11px; height: 11px; border-radius: 50%; }
+.path__dot--on { background: var(--gold); }
+.path__dot--off { background: var(--grey-400); }
+.path__torii { position: absolute; width: 214px; height: 214px; z-index: 0; }
+.path__start {
+  position: absolute;
+  z-index: 3;
+  width: 127px;
+  height: 61px;
+  display: grid;
+  place-items: center;
+}
+.path__start img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.path__start span {
+  position: relative;
+  font-size: 32px;
+  font-weight: 300;
+  padding-bottom: 8px;
+}
+
+/* --------------------------------------------------------------- practice */
+
+.run__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+.run__timers { font-size: 40px; display: flex; gap: 24px; }
+.run__timer-item { font-weight: 500; }
+.run__timer-total { color: var(--grey-700); font-weight: 400; }
+
+.run__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  margin-top: 40px;
+}
+
+.stage-card {
+  background: #fff;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-stage);
+  width: 756px;
+  max-width: 100%;
+  padding: 28px 61px 40px;
+}
+
+.navbtn {
+  width: 120px;
+  height: 120px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.navbtn img { width: 100%; height: 100%; display: block; }
+/* Figma draws the left arrow as the right one, mirrored. */
+.navbtn__flip { transform: scaleX(-1); }
+.navbtn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+.pips {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin-top: 48px;
+  flex-wrap: wrap;
+}
+/* Figma pip: 36px circle with a 10.8px white square centred in it. */
+.pip {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--grey-300);
+}
+.pip::after {
+  content: "";
+  width: 10.8px;
+  height: 10.8px;
+  background: #fff;
+  display: block;
+}
+.pip--good { background: var(--green); }
+.pip--close { background: var(--gold); }
+.pip--bad { background: var(--red-soft); }
+.pip--current { background: var(--gold); }
+.pip--empty { background: #fff; border: 1px solid var(--grey-500); }
+.pip--empty::after { border: 1px solid var(--grey-500); width: 9.8px; height: 9.8px; }
+
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-card);
+  padding: 8px 24px;
+  font-size: 24px;
+  color: #fff;
+}
+.verdict--close { color: #000; }
+
+.feedback { display: flex; align-items: flex-start; gap: 24px; margin-top: 24px; min-height: 72px; }
+.feedback__text { color: var(--grey-600); font-size: 24px; margin: 0; max-width: 455px; }
+
+/* ------------------------------------------------------------- statistics */
+
+.stat-row { display: flex; gap: 61px; font-size: 24px; }
+.stat { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+.stat__label { font-weight: 400; }
+.stat__value { font-weight: 500; }
+
+.bars { display: flex; flex-direction: column; gap: 24px; width: 189px; }
+.bar__head { display: flex; justify-content: space-between; font-size: 16px; margin-bottom: 12px; }
+.bar__track {
+  height: 20px;
+  border-radius: 24px;
+  background: var(--grey-100);
+  box-shadow: inset 0 0 9.2px 0 rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+.bar__fill { height: 20px; border-radius: 12px; }
+
+.legend { display: flex; flex-direction: column; gap: 16px; font-size: 18px; }
+.legend__row { display: flex; align-items: center; gap: 21px; }
+
+.donut {
+  width: 165px;
+  height: 165px;
+  border-radius: 50%;
+  position: relative;
+}
+.donut__hole {
+  position: absolute;
+  inset: 28%;
+  background: #fff;
+  border-radius: 50%;
+}
+
+/* ------------------------------------------------------------------ table */
+
+.table { width: 100%; border-collapse: collapse; font-size: 18px; }
+.table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--grey-700);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--grey-300);
+}
+.table td { padding: 16px; border-bottom: 1px solid var(--grey-100); }
+.table tr:last-child td { border-bottom: none; }
+.table__lesson { font-weight: 500; }
+.status--completed { color: var(--green); }
+.status--unfinished { color: var(--grey-600); }
+
+/* ------------------------------------------------------------------- shop */
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 32px;
+  margin-top: 40px;
+}
+.shop-item { display: flex; flex-direction: column; gap: 12px; }
+.shop-item__name { font-size: 24px; font-weight: 500; margin: 0; }
+.shop-item__desc { color: var(--grey-600); font-size: 18px; margin: 0; flex: 1; }
+.shop-item__cost { display: flex; align-items: center; gap: 8px; font-size: 20px; }
+
+.coinline { display: flex; align-items: center; gap: 17px; font-size: 24px; }
+.coinline img { width: 19.64px; height: 19.64px; }
+.coinline span { font-weight: 300; font-size: 19.64px; }
+
+/* ----------------------------------------------------------------- layout */
+
+.split { display: flex; gap: 48px; align-items: flex-start; }
+.split__main { flex: 1 1 auto; min-width: 0; }
+.split__aside { flex: 0 0 auto; }
+.stack { display: flex; flex-direction: column; gap: 40px; }
+.muted { color: var(--grey-600); }
+.messages { list-style: none; padding: 0; margin: 0 0 24px; }
+.messages li { padding: 12px 24px; border-radius: var(--radius-card); background: var(--grey-100); }
+
+@media (max-width: 1100px) {
+  .page { padding: 32px 24px 64px; }
+  .split { flex-direction: column; }
+  .path { display: none; }
+  .navbtn { width: 72px; height: 72px; }
+  .run__stage { gap: 12px; }
+}
+
+/* Summary/history three-up: vocab, sentences, stats panel. Widths from the
+   Figma frame (vocab 409, sentences 355, panel 584) so all three fit 1440. */
+.summary-cols {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.summary-cols { gap: 32px; }
+.summary-cols__vocab { flex: 0 1 auto; min-width: 280px; }
+.summary-cols__sentences { flex: 0 1 auto; min-width: 260px; }
+.summary-cols__stats { flex: 0 0 584px; max-width: 100%; }

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Your history — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="page__head">
+  <h1 class="page__title">Your Account History and Statistics</h1>
+  <div class="coinline">
+    <span>Total Coins:</span>
+    <img src="{% static 'img/coin-gold.svg' %}" alt=""><span>{{ total_coins }}</span>
+  </div>
+</div>
+
+<div style="display:flex;gap:48px;align-items:flex-start;margin-top:48px;flex-wrap:wrap">
+  <section style="flex:1 1 520px;min-width:0">
+    <h2 class="list-heading" style="font-weight:400">Past Lessons</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Lesson</th><th>Status</th><th>Score</th>
+          <th>Results</th><th>Time</th><th>Coins</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="table__lesson">
+              <a href="{% url 'session_summary' row.session.id %}">Lesson {{ row.lesson.number }}</a>
+            </td>
+            <td class="{% if row.session.completed %}status--completed{% else %}status--unfinished{% endif %}">
+              {{ row.status }}
+            </td>
+            <td>{% if row.score_pct is not None %}{{ row.score_pct }}%{% else %}—{% endif %}</td>
+            <td>{{ row.passed }}/{{ row.total }}</td>
+            <td>{{ row.time_display }}</td>
+            <td>{{ row.coins }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="muted">No practice sessions yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% include "partials/stats_panel.html" with score_label="Avg Score" results_label="Sessions" time_label="Avg Time" score_pct=avg_score|default:0 passed=sessions_count total=sessions_count time_display=avg_time_display donut=donut %}
+</div>
+{% endblock %}

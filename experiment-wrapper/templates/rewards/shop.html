@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Shop — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="page__head">
+  <h1 class="page__title">Shop</h1>
+  <div class="coinline">
+    <span>Total Coins:</span>
+    <img src="{% static 'img/coin-gold.svg' %}" alt="">
+    <span>{% if wallet %}{{ wallet.coins }}{% else %}0{% endif %}</span>
+  </div>
+</div>
+
+<div class="shop-grid">
+  {% for item in items %}
+    <section class="card shop-item">
+      <h2 class="shop-item__name">{{ item.name }}</h2>
+      <p class="shop-item__desc">{{ item.description }}</p>
+      <p class="shop-item__cost">
+        Cost:
+        <img src="{% static 'img/coin-gold.svg' %}" alt="" width="20" height="20">
+        {{ item.cost }}
+      </p>
+      <form method="post" action="{% url 'shop_buy' item.slug %}">
+        {% csrf_token %}
+        <button class="btn btn--block" type="submit"
+                {% if not wallet or wallet.coins < item.cost %}disabled{% endif %}>Buy</button>
+      </form>
+    </section>
+  {% empty %}
+    <p class="muted">The shop is empty.</p>
+  {% endfor %}
+</div>
+{% endblock %}

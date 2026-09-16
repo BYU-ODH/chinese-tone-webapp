@@ -1,0 +1,53 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#da3a3a">
+<title>{% block title %}{{ site_name }}{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'css/tone.css' %}">
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<header class="appbar">
+  {# Figma still reads "Tone Trainer"; the product is Tone Tiger. #}
+  <a class="appbar__brand" href="{% url 'landing' %}">{{ site_name }}</a>
+
+  {% if not hide_nav_links %}
+    <nav class="appbar__links">
+      <a href="{% url 'dashboard' %}">Home</a>
+      <a href="{% url 'dashboard' %}">Practice</a>
+      <a href="{% url 'shop' %}">Shop</a>
+    </nav>
+  {% endif %}
+
+  <div class="appbar__coins">
+    {% if participant %}
+      <img src="{% static 'img/coin-gold.svg' %}" alt="" width="20" height="20">
+      <span>{{ coin_balance }}</span>
+    {% endif %}
+    {% if user.is_authenticated %}
+      <a href="{% url 'history' %}" title="Your account">
+        <img class="appbar__account" src="{% static 'img/account-circle.svg' %}" alt="Your account">
+      </a>
+    {% else %}
+      <a href="{% url 'login' %}">
+        <img class="appbar__account" src="{% static 'img/account-circle.svg' %}" alt="Log in">
+      </a>
+    {% endif %}
+  </div>
+</header>
+
+<main class="page">
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

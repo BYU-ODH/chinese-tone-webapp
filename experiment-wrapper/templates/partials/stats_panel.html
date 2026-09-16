@@ -1,0 +1,54 @@
+{% load static %}
+{# Score / Results / Total Time, per-tone bars, verdict donut. Figma node 237:494. #}
+<section class="panel" style="width:584px;max-width:100%">
+  <div class="stat-row">
+    <div class="stat">
+      <span class="stat__label">{{ score_label|default:"Score" }}</span>
+      <span class="stat__value">{{ score_pct }}%</span>
+    </div>
+    <div class="stat">
+      <span class="stat__label">{{ results_label|default:"Results" }}</span>
+      <span class="stat__value">{{ passed }}/{{ total }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat__label">{{ time_label|default:"Total Time" }}</span>
+      <span class="stat__value">{{ time_display }}</span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:80px;margin-top:56px;align-items:flex-start">
+    <div class="bars">
+      {% for row in tone_rows %}
+        <div>
+          <div class="bar__head">
+            <span>Tone {{ row.tone }}</span>
+            {% if row.pct is None %}
+              <span class="muted" title="No tone {{ row.tone }} syllables in this set">&mdash;</span>
+            {% else %}
+              <span>{{ row.pct }}%</span>
+            {% endif %}
+          </div>
+          <div class="bar__track">
+            {% if row.pct is not None %}
+              <div class="bar__fill" style="width:{{ row.pct }}%;background:{{ row.color }}"></div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:48px;align-items:center">
+      <div class="legend">
+        {% for slice in mix %}
+          <div class="legend__row">
+            <span class="dot" style="background:{{ slice.color }}"></span>
+            <span>{{ slice.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="donut" style="background:conic-gradient({{ donut }})">
+        <div class="donut__hole"></div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Login — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div style="max-width:520px;margin:80px auto 0">
+  <h1 class="page__title" style="text-align:center">Login to Your Account</h1>
+
+  <form method="post" class="stack" style="margin-top:48px;gap:24px">
+    {% csrf_token %}
+    {% if form.errors %}
+      <p style="color:var(--red-soft);font-size:18px;margin:0">
+        That username and password didn't match. Please try again.
+      </p>
+    {% endif %}
+
+    <label style="display:flex;flex-direction:column;gap:8px;font-size:20px">
+      Username or email
+      <input type="text" name="username" autocomplete="username" required autofocus
+             style="font:inherit;padding:16px 24px;border:1px solid #000;border-radius:var(--radius-pill)">
+    </label>
+
+    <label style="display:flex;flex-direction:column;gap:8px;font-size:20px">
+      Password
+      <input type="password" name="password" autocomplete="current-password" required
+             style="font:inherit;padding:16px 24px;border:1px solid #000;border-radius:var(--radius-pill)">
+    </label>
+
+    <button class="btn btn--lg btn--block" type="submit">Login</button>
+    <input type="hidden" name="next" value="{{ next }}">
+  </form>
+</div>
+{% endblock %}

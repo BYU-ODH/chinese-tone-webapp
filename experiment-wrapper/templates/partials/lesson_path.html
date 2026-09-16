@@ -1,0 +1,40 @@
+{% load static %}
+{% comment %}
+Duolingo-style path. Geometry comes from study/lesson_path.py, which lifts its
+offsets from the Figma frame.
+{% endcomment %}
+<div class="path" style="width:{{ path.width }}px;height:{{ path.height }}px">
+  {% for dot in path.dots %}
+    <span class="path__dot {% if dot.active %}path__dot--on{% else %}path__dot--off{% endif %}"
+          style="left:{{ dot.x }}px;top:{{ dot.y }}px"></span>
+  {% endfor %}
+
+  {% for node in path.nodes %}
+    {% if node.unlocked %}
+      <a class="path__node" href="{% url 'lesson_detail' node.lesson.slug %}"
+         style="left:{{ node.x }}px;top:{{ node.y }}px">
+        <img src="{% static 'img/node-done.svg' %}" alt="">
+        <span>{{ node.lesson.number }}</span>
+      </a>
+    {% else %}
+      <span class="path__node" style="left:{{ node.x }}px;top:{{ node.y }}px" aria-disabled="true">
+        <img src="{% static 'img/node-locked.svg' %}" alt="">
+        <span>{{ node.lesson.number }}</span>
+      </span>
+    {% endif %}
+
+    <span class="path__label" style="left:{{ node.x|add:119 }}px;top:{{ node.y|add:13 }}px">
+      {{ node.lesson.title }}
+    </span>
+
+    {% if node.is_current %}
+      <span class="path__start" style="left:{{ node.x|add:-111 }}px;top:{{ node.y|add:-6 }}px">
+        <img src="{% static 'img/start-bubble.svg' %}" alt="">
+        <span>Start</span>
+      </span>
+    {% endif %}
+  {% endfor %}
+
+  <img class="path__torii" src="{% static 'img/torii.png' %}" alt=""
+       style="left:{{ path.torii_x }}px;top:{{ path.torii_y }}px">
+</div>

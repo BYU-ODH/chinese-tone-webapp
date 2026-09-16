@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ site_name }} — learn Chinese tones{% endblock %}
+
+{% block content %}
+<div class="split">
+  <div class="split__main">
+    <h1 style="font-family:var(--font-display);font-size:64px;font-weight:700;margin:80px 0 0">
+      Tone Tiger
+    </h1>
+    <p style="font-family:var(--font-display);font-size:40px;font-weight:300;max-width:747px;margin:24px 0 0">
+      Learn chinese tones by testing your speaking skills
+    </p>
+
+    <div style="margin-top:120px;display:flex;flex-direction:column;align-items:center;gap:24px;width:342px">
+      <a class="btn btn--lg btn--block" href="{% url 'login' %}">Login</a>
+      <span style="font-size:24px">OR</span>
+      {% if first_lesson %}
+        <a class="btn btn--plain" href="{% url 'lesson_detail' first_lesson.slug %}">Practice as guest</a>
+      {% else %}
+        <span class="btn btn--plain muted" aria-disabled="true">Practice as guest</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="split__aside">
+    {% include "partials/lesson_path.html" %}
+  </div>
+</div>
+{% endblock %}

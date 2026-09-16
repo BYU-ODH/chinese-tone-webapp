@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Lesson {{ lesson.number }} Practice — {{ site_name }}{% endblock %}
+
+{% block head %}
+<script type="module" src="{% static 'multi-syllable/tone-phrase-trainer.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="run__head">
+  <h1 class="page__title">Lesson {{ lesson.number }} Practice</h1>
+  <div class="run__timers">
+    <span class="run__timer-item" data-el="item-timer">0:00</span>
+    <span class="run__timer-total" data-el="total-timer">0:00</span>
+  </div>
+</div>
+
+<div class="run__stage">
+  <button class="navbtn" data-nav="prev" type="button" aria-label="Previous item">
+    <img class="navbtn__flip" src="{% static 'img/nav-prev.svg' %}" alt="">
+  </button>
+
+  <div class="stage-card">
+    {% comment %}
+    The card interior IS the component: it owns recording, analysis,
+    segmentation, scoring and the contour drawing. hide-nav because the wrapper
+    owns sequencing (fail twice, move on).
+    {% endcomment %}
+    <tone-phrase-trainer id="trainer" hide-nav></tone-phrase-trainer>
+
+    <div class="feedback">
+      <span class="verdict" data-el="verdict" hidden></span>
+      <p class="feedback__text" data-el="diagnostic"></p>
+    </div>
+  </div>
+
+  <button class="navbtn" data-nav="next" type="button" aria-label="Next item">
+    <img src="{% static 'img/nav-next.svg' %}" alt="">
+  </button>
+</div>
+
+<div class="pips" data-el="pips">
+  {% for pip in pips %}
+    <span class="pip pip--{{ pip.state }}" data-pip></span>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ config|json_script:"practice-config" }}
+<script type="module" src="{% static 'js/practice.js' %}"></script>
+{% endblock %}

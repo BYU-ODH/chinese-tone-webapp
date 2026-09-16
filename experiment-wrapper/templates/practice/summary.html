@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Lesson {{ lesson.number }} Summary — {{ site_name }}{% endblock %}
+
+{% block content %}
+<h1 class="page__title">Lesson {{ lesson.number }} Practice Summary</h1>
+
+<div class="coinline" style="margin-top:24px">
+  <span>Coins Earned :</span>
+  <img src="{% static 'img/coin-gold.svg' %}" alt="gold coins"><span>{{ gold }}</span>
+  <img src="{% static 'img/coin-silver.svg' %}" alt="silver coins"><span>{{ silver }}</span>
+</div>
+
+<div class="summary-cols" style="margin-top:48px">
+  <section class="summary-cols__vocab">
+    <h2 class="list-heading" style="font-weight:400">Vocabulary</h2>
+    <div class="vocab vocab--scored">
+      {% for row in words %}
+        <span class="dot" style="background:{{ row.color }}"
+              title="{{ row.verdict|default:'not attempted' }}"></span>
+        <span class="vocab__hanzi">{{ row.item.hanzi }}</span>
+        <span>{{ row.pinyin }}</span>
+        <span class="vocab__gloss">{{ row.item.gloss }}</span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="summary-cols__sentences">
+    <h2 class="list-heading" style="font-weight:400">Sentences</h2>
+    <div class="sentences sentences--scored">
+      {% for row in sentences %}
+        <div class="sentence">
+          <span class="dot" style="background:{{ row.color }}"
+                title="{{ row.verdict|default:'not attempted' }}"></span>
+          <div>
+            <p class="sentence__hanzi" style="margin:0">{{ row.item.hanzi }}</p>
+            <p class="sentence__pinyin" style="margin:0">{{ row.pinyin }}</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="summary-cols__stats">
+    {% include "partials/stats_panel.html" with time_display=time_display %}
+  </div>
+</div>
+
+<div style="margin-top:48px;display:flex;gap:16px">
+  <a class="btn" href="{% url 'dashboard' %}">Back to dashboard</a>
+  <a class="btn btn--ghost" href="{% url 'lesson_detail' lesson.slug %}">Practice again</a>
+</div>
+{% endblock %}
