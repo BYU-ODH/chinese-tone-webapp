@@ -269,6 +269,28 @@ export const COMPONENT_CSS = `
 }
 .ghost-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Play + download travel together; the pair must wrap as a unit, or a narrow
+   screen strands a bare icon on the next line with nothing to label it. */
+.btn-pair {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: inherit;
+  padding: 0 0.55rem;
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 0;
+}
+.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.icon-btn:hover:not(:disabled) { background: var(--border); }
+
 .mic-meter {
   height: 6px;
   background: var(--border);

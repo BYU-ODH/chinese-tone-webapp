@@ -213,3 +213,89 @@ export function encodeWav (samples, sampleRate) {
   }
   return buf;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Saving a recording                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tone-numbered ASCII form of one syllable: {base:'hao', tone:3} -> 'hao3'.
+ *
+ * Tone NUMBERS rather than the diacritics shown on screen, because this ends
+ * up in a filename: 'nǐ' is not portable across filesystems, and stripping
+ * the diacritic to 'ni' would throw away the one piece of information this
+ * whole app is about. Numbered pinyin is also exactly how the project's own
+ * corpora name their files (ba1-01.mp3, bei3jing1, yu3yan2), so a downloaded
+ * recording drops straight into that world.
+ *
+ * Neutral syllables carry no digit — ba4ba, not ba4ba0 — again matching the
+ * corpus convention.
+ *
+ * `base` is already plain ASCII for every syllable in this project's
+ * curricula (targets.json spells ü as v: lv, nve), but the phrase list is
+ * host-replaceable, so anything unexpected is normalized rather than trusted.
+ */
+function toneNumbered (syllable) {
+  const raw = String((syllable && (syllable.base || syllable.syllable)) || '');
+  const base = raw
+    .toLowerCase()
+    .replace(/[üǖǘǚǜ]/g, 'v')       // corpus spelling for ü
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip tone diacritics
+    .replace(/[^a-z0-9]/g, '');
+  const tone = Number(syllable && syllable.tone);
+  return base + (tone >= 1 && tone <= 4 ? String(tone) : '');
+}
+
+/** Local date and time as YYYYMMDD-HHMMSS. */
+function timestamp (date) {
+  const pad = n => String(n).padStart(2, '0');
+  const d = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+  const t = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  return `${d}-${t}`;
+}
+
+/**
+ * Filename for a downloaded recording:
+ * `<pinyin>-<kind>-<YYYYMMDD>-<HHMMSS>.wav`, e.g.
+ * `ni2hao3-orig-20260916-143052.wav`.
+ *
+ * Seconds resolution, not just the date: a learner drills the same prompt
+ * repeatedly, so a date-only stamp would have every attempt at one phrase
+ * collide and arrive as "ni2hao3-orig-20260916 (3).wav" — or overwrite,
+ * depending on the browser. The time is what makes the attempts distinct
+ * and orderable.
+ *
+ * LOCAL time, not UTC: the learner is naming files for themselves, and a
+ * recording made at 9pm should not be filed under tomorrow.
+ *
+ * @param {Array<{base?:string, syllable?:string, tone:number}>} syllables
+ *   in order. For a phrase, pass the SURFACE tones — what the learner was
+ *   asked to say, and what the recording is evidence about.
+ * @param {'orig'|'corrected'} kind
+ * @param {Date} [when]
+ */
+export function recordingFilename (syllables, kind, when = new Date()) {
+  const pinyin = (syllables || []).map(toneNumbered).join('');
+  return `${pinyin || 'recording'}-${kind}-${timestamp(when)}.wav`;
+}
+
+/**
+ * Hand a Blob to the browser's downloader under `filename`.
+ *
+ * The object URL is revoked on a timer rather than immediately: revoking in
+ * the same tick races the download in some browsers, which have only queued
+ * the fetch by the time click() returns.
+ */
+export function downloadBlob (blob, filename) {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}

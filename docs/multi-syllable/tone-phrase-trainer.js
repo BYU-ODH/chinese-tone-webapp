@@ -25,8 +25,8 @@
  * ATTRIBUTES
  *   phrase-index    initial/current phrase index (reflected both ways)
  *   hide-nav        hide the built-in prev/next buttons
- *   hide-playback   hide BOTH playback buttons ("play your voice" and
- *                   "play your corrected voice")
+ *   hide-playback   hide both playback controls — each is a play button
+ *                   plus a download icon, and the attribute hides the pair
  *   defer           do NOT load the analysis engine on connect; the host
  *                   calls load() when it wants the (~30MB WASM) download
  *   skip-calibration  do not run the calibration pass on load (the host
@@ -52,6 +52,14 @@
  *   playCorrected()    play the last recording with the tones corrected;
  *                      resolves once playback has been started. No-op when
  *                      there is nothing correctable (see below)
+ *   downloadRecording()  save the untouched recording as a .wav
+ *   downloadCorrected()  save the corrected recording as a .wav; synthesizes
+ *                      it first if the learner never pressed play
+ *
+ * Downloads are named `<pinyin>-<orig|corrected>-<YYYYMMDD>-<HHMMSS>.wav`
+ * from the SURFACE tones of the current prompt — 你好 files as
+ * `ni2hao3-orig-…`, matching both what the learner was asked to say and this
+ * project's own corpus naming (see recordingFilename in audio.js).
  *   startCalibration() run a calibration pass now (forces one even if the
  *                      normalizer is already calibrated)
  *   skipCalibration()  abandon the running pass
@@ -96,7 +104,8 @@
  *     still be scored wrong — the feature does not, and should not, retime
  *     the learner's speech. The button stays disabled when there is nothing
  *     honest to correct: an unscored utterance, or a phrase whose every
- *     syllable is neutral.
+ *     syllable is neutral. Either recording can also be downloaded from the
+ *     icon beside its play button.
  *   - A calibration pass runs before any phrase work (one "ma" per tone),
  *     using the SAME CalibrationSession the single-word app uses
  *     (../single-word/calibration.js) so the two flows cannot drift. It is
@@ -109,7 +118,9 @@
  *     regime is live rather than hiding it.
  */
 
-import { createRecorder, encodeWav } from '../single-word/audio.js';
+import {
+  createRecorder, encodeWav, recordingFilename, downloadBlob
+} from '../single-word/audio.js';
 import { ensureReady, analyzeWav, resynthesizeWithPitch } from '../single-word/praat-engine.js';
 import { ensureDenoiseReady, denoise } from '../single-word/denoise.js';
 import { SpeakerNormalizer, extractFeatures } from '../single-word/features.js';
@@ -126,6 +137,20 @@ import {
   buildAttemptDetail, escapeHtml
 } from './result.js';
 import { COMPONENT_CSS } from './styles.js';
+
+/*
+ * Download glyph — arrow into a tray. Inline rather than a font or an <img>
+ * because the component ships as one self-contained file with no assets of
+ * its own; `currentColor` lets it inherit whatever the host themes the
+ * button text to.
+ */
+const DOWNLOAD_ICON = `
+<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+  <path d="M8 1.5v7.5m0 0L5.2 6.2M8 9l2.8-2.8" fill="none" stroke="currentColor"
+    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M2.5 11v1.8a1.2 1.2 0 0 0 1.2 1.2h8.6a1.2 1.2 0 0 0 1.2-1.2V11"
+    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
 
 const TEMPLATE = `
 <div class="root">
@@ -160,9 +185,18 @@ const TEMPLATE = `
       <span class="dot"></span>
       <span data-el="record-label">Hold to speak</span>
     </button>
-    <button class="ghost-btn" data-el="play" type="button" disabled>Play your voice</button>
-    <button class="ghost-btn" data-el="play-fixed" type="button" disabled
-      title="Hear your own recording with the tones corrected">Play your corrected voice</button>
+    <span class="btn-pair" data-el="play-group">
+      <button class="ghost-btn" data-el="play" type="button" disabled>Play your voice</button>
+      <button class="icon-btn" data-el="save" type="button" disabled
+        title="Download your recording" aria-label="Download your recording">${DOWNLOAD_ICON}</button>
+    </span>
+    <span class="btn-pair" data-el="play-fixed-group">
+      <button class="ghost-btn" data-el="play-fixed" type="button" disabled
+        title="Hear your own recording with the tones corrected">Play your corrected voice</button>
+      <button class="icon-btn" data-el="save-fixed" type="button" disabled
+        title="Download the corrected recording"
+        aria-label="Download the corrected recording">${DOWNLOAD_ICON}</button>
+    </span>
   </div>
 
   <div class="mic-meter" aria-hidden="true"><div data-el="meter"></div></div>
@@ -192,7 +226,8 @@ export class TonePhraseTrainer extends HTMLElement {
     this._recorder = null;
     this._lastWavBlob = null;
     this._correction = null;        // pitch points for the last attempt, or null
-    this._correctedWavBlob = null;  // resynthesis result, built on first play
+    this._correctedWavBlob = null;  // resynthesis result, built on first need
+    this._correctionPromise = null; // in-flight resynthesis, shared by play + download
     this._meterRaf = 0;
     this._ready = false;
     this._loadPromise = null;
@@ -317,7 +352,7 @@ export class TonePhraseTrainer extends HTMLElement {
   reset () {
     this._lastWavBlob = null;
     this._lastAttempt = null;
-    this._els.play.disabled = true;
+    this._enableRawPlayback(false);
     this._clearCorrection();
     this._els.summary.textContent = '';
     this._els.warn.classList.add('hidden');
@@ -340,6 +375,9 @@ export class TonePhraseTrainer extends HTMLElement {
       this._els[n.dataset.el] = n;
     });
     this._els.playFixed = this._els['play-fixed'];
+    this._els.saveFixed = this._els['save-fixed'];
+    this._els.playGroup = this._els['play-group'];
+    this._els.playFixedGroup = this._els['play-fixed-group'];
     this._els.calibSkip = this._els['calib-skip'];
     this._els.calibProgress = this._els['calib-progress'];
     this._els.prev = root.querySelector('[data-nav="prev"]');
@@ -350,6 +388,8 @@ export class TonePhraseTrainer extends HTMLElement {
     this._els.next.addEventListener('click', () => this.next());
     this._els.play.addEventListener('click', () => this.playRecording());
     this._els.playFixed.addEventListener('click', () => this.playCorrected());
+    this._els.save.addEventListener('click', () => this.downloadRecording());
+    this._els.saveFixed.addEventListener('click', () => this.downloadCorrected());
     this._els.calibSkip.addEventListener('click', () => this.skipCalibration());
 
     this._bindHold();
@@ -367,8 +407,8 @@ export class TonePhraseTrainer extends HTMLElement {
     this._els.prev.classList.toggle('hidden', hideNav);
     this._els.next.classList.toggle('hidden', hideNav);
     const hidePlayback = this.hasAttribute('hide-playback');
-    this._els.play.classList.toggle('hidden', hidePlayback);
-    this._els.playFixed.classList.toggle('hidden', hidePlayback);
+    this._els.playGroup.classList.toggle('hidden', hidePlayback);
+    this._els.playFixedGroup.classList.toggle('hidden', hidePlayback);
   }
 
   /*
@@ -456,7 +496,7 @@ export class TonePhraseTrainer extends HTMLElement {
     this._startMeter();
     this._els.summary.textContent = '';
     this._els.warn.classList.add('hidden');
-    this._els.play.disabled = true;
+    this._enableRawPlayback(false);
     this._clearCorrection();
   }
 
@@ -488,7 +528,7 @@ export class TonePhraseTrainer extends HTMLElement {
     // Blob built afterwards would be empty. Playback uses the original
     // capture; only the analysis copy is denoised.
     this._lastWavBlob = new Blob([wav], { type: 'audio/wav' });
-    this._els.play.disabled = this.hasAttribute('hide-playback');
+    this._enableRawPlayback(true);
     this._els.summary.innerHTML = '<div class="diagnostic">Listening…</div>';
 
     try {
@@ -555,8 +595,8 @@ export class TonePhraseTrainer extends HTMLElement {
     this._correction =
       buildCorrectedPitchPoints(analysis, res, correctionTargets, this._normalizer);
     this._correctedWavBlob = null;
-    this._els.playFixed.disabled =
-      !this._correction || !this._lastWavBlob || this.hasAttribute('hide-playback');
+    this._correctionPromise = null;
+    this._enableCorrectedPlayback(!!this._correction && !!this._lastWavBlob);
     this._els.playFixed.textContent = 'Play your corrected voice';
 
     // Register update happens once, after the whole utterance is scored,
@@ -798,31 +838,96 @@ export class TonePhraseTrainer extends HTMLElement {
    * runs in the Praat worker, so it doesn't block the UI — but it isn't
    * instant either, hence the button state while it works.
    */
+  /**
+   * Play the learner's own recording with the tones corrected: same voice,
+   * same timing, same words, F0 replaced by the target contour they were
+   * just shown (see pitch-correct.js for what is and isn't corrected).
+   * Resolves once playback has started, or immediately if there is nothing
+   * to play.
+   */
   async playCorrected () {
-    if (!this._correction || !this._lastWavBlob) return;
-    if (this._correctedWavBlob) { this._play(this._correctedWavBlob); return; }
+    const blob = await this._ensureCorrectedWav();
+    if (blob) this._play(blob);
+  }
+
+  /** Download the recording exactly as captured. */
+  downloadRecording () {
+    if (!this._lastWavBlob) return;
+    downloadBlob(this._lastWavBlob,
+      recordingFilename(this._promptSyllables(), 'orig'));
+  }
+
+  /**
+   * Download the pitch-corrected recording. Synthesizes it on the spot if
+   * the learner never pressed play — downloading and listening are
+   * independent things to want, and making one a precondition of the other
+   * would be an artifact of how this is cached, not a real constraint.
+   */
+  async downloadCorrected () {
+    const blob = await this._ensureCorrectedWav();
+    if (blob) downloadBlob(blob, recordingFilename(this._promptSyllables(), 'corrected'));
+  }
+
+  /**
+   * Syllables of the current prompt, as {base, tone}, for naming a download.
+   * SURFACE tones, not citation: the file records what the learner was asked
+   * to say and actually attempted, so 你好 files as ni2hao3, matching both
+   * the on-screen prompt and this project's corpus naming.
+   */
+  _promptSyllables () {
+    if (this.calibrating) {
+      const w = this._calibration.item;
+      return w ? [{ base: w.syllable, tone: w.tone }] : [];
+    }
+    const phrase = this.phrase;
+    if (!phrase) return [];
+    return phrase.syllables.map((syl, i) => ({
+      base: syl.base,
+      tone: phrase.surfaceTones[i]
+    }));
+  }
+
+  /**
+   * The corrected WAV, resynthesized on first need and cached thereafter.
+   *
+   * The in-flight promise is cached too, not just the result: play and
+   * download are two buttons onto the same audio, and a learner who hits
+   * both before the first finishes would otherwise run the Praat pass twice
+   * and race over which result gets stored.
+   */
+  _ensureCorrectedWav () {
+    if (this._correctedWavBlob) return Promise.resolve(this._correctedWavBlob);
+    if (this._correctionPromise) return this._correctionPromise;
+    if (!this._correction || !this._lastWavBlob) return Promise.resolve(null);
 
     const btn = this._els.playFixed;
-    btn.disabled = true;
+    this._enableCorrectedPlayback(false);
     btn.textContent = 'Correcting…';
-    try {
-      // analyzeWav TRANSFERS its buffer to the worker, so this must be a
-      // fresh copy of the blob rather than the original capture buffer,
-      // which was detached during scoring.
-      const source = await this._lastWavBlob.arrayBuffer();
-      const wav = await resynthesizeWithPitch(source, this._correction.points);
-      this._correctedWavBlob = new Blob([wav], { type: 'audio/wav' });
-      btn.textContent = 'Play your corrected voice';
-      btn.disabled = false;
-      this._play(this._correctedWavBlob);
-    } catch (err) {
-      console.error('Pitch correction failed:', err);
-      // Leave the button disabled and say so rather than silently doing
-      // nothing: a dead button the learner keeps pressing is worse than an
-      // honest one. The next attempt re-enables it.
-      btn.textContent = 'Correction unavailable';
-      this._emit('error', { message: err.message || String(err) });
-    }
+
+    this._correctionPromise = (async () => {
+      try {
+        // resynthesizeWithPitch TRANSFERS its buffer to the worker, so this
+        // must be a fresh copy from the Blob — the original capture buffer
+        // was already detached by the analysis pass.
+        const source = await this._lastWavBlob.arrayBuffer();
+        const wav = await resynthesizeWithPitch(source, this._correction.points);
+        this._correctedWavBlob = new Blob([wav], { type: 'audio/wav' });
+        btn.textContent = 'Play your corrected voice';
+        this._enableCorrectedPlayback(true);
+        return this._correctedWavBlob;
+      } catch (err) {
+        console.error('Pitch correction failed:', err);
+        // Say so rather than leaving buttons that silently do nothing: a
+        // dead control the learner keeps pressing is worse than an honest
+        // one. The next attempt re-enables both.
+        btn.textContent = 'Correction unavailable';
+        this._emit('error', { message: err.message || String(err) });
+        return null;
+      } finally {
+        this._correctionPromise = null;
+      }
+    })();
+    return this._correctionPromise;
   }
 
   /** Shared one-shot playback; revokes the object URL when it finishes. */
@@ -841,9 +946,30 @@ export class TonePhraseTrainer extends HTMLElement {
   _clearCorrection () {
     this._correction = null;
     this._correctedWavBlob = null;
+    this._correctionPromise = null;
     if (!this._built) return;
-    this._els.playFixed.disabled = true;
+    this._enableCorrectedPlayback(false);
     this._els.playFixed.textContent = 'Play your corrected voice';
+  }
+
+  /*
+   * Play and download are enabled and disabled together, through these two
+   * helpers rather than at each call site. There is no state in which one
+   * makes sense without the other, and the failure mode of letting them
+   * drift is a download button that hands over the PREVIOUS attempt's audio
+   * under this attempt's filename — silently wrong data, in a feature whose
+   * whole purpose is to produce files someone will later analyse.
+   */
+  _enableRawPlayback (on) {
+    const enabled = on && !this.hasAttribute('hide-playback');
+    this._els.play.disabled = !enabled;
+    this._els.save.disabled = !enabled;
+  }
+
+  _enableCorrectedPlayback (on) {
+    const enabled = on && !this.hasAttribute('hide-playback');
+    this._els.playFixed.disabled = !enabled;
+    this._els.saveFixed.disabled = !enabled;
   }
 
   _showError (msg) {

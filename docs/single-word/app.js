@@ -20,7 +20,9 @@
  * covers mouse, touch, and stylus).
  */
 
-import { createRecorder, encodeWav } from './audio.js';
+import {
+  createRecorder, encodeWav, recordingFilename, downloadBlob
+} from './audio.js';
 import { ensureReady, analyzeWav, resynthesizeWithPitch } from './praat-engine.js';
 import { ensureDenoiseReady, denoise } from './denoise.js';
 import { extractFeatures, SpeakerNormalizer } from './features.js';
@@ -54,7 +56,8 @@ const state = {
   wordIdx: 0,
   lastWavBlob: null,
   correction: null,          // pitch points for the last attempt, or null
-  correctedWavBlob: null,    // resynthesis result, built on first play
+  correctedWavBlob: null,    // resynthesis result, built on first need
+  correctionPromise: null,   // in-flight resynthesis, shared by play + download
   micMeterRaf: 0,
   ready: false,
   // CalibrationSession while a pass is running, else null. The sequencing
@@ -82,6 +85,8 @@ const els = {
   recordBtn: $('record-btn'),
   playBtn: $('play-btn'),
   playFixedBtn: $('play-fixed-btn'),
+  saveBtn: $('save-btn'),
+  saveFixedBtn: $('save-fixed-btn'),
   micMeter: $('mic-meter').firstElementChild,
   feedback: $('feedback'),
   errorPanel: $('error-panel'),
@@ -248,7 +253,7 @@ function bindPracticeHandlers () {
     rec.start();
     startMicMeter();
     els.feedback.innerHTML = '';
-    els.playBtn.disabled = true;
+    enableRawPlayback(false);
     clearCorrection();
   };
 
@@ -270,7 +275,7 @@ function bindPracticeHandlers () {
       // noisy recordings without regressing clean ones, but it's an
       // enhancement to scoring, not to what the learner hears back.
       state.lastWavBlob = new Blob([wav], { type: 'audio/wav' });
-      els.playBtn.disabled = false;
+      enableRawPlayback(true);
 
       els.feedback.innerHTML = '<span class="diagnostic">Listening…</span>';
 
@@ -310,7 +315,8 @@ function bindPracticeHandlers () {
           state.correction = buildCorrectedPitchPointsForSyllable(
             analysis, features, target, state.normalizer);
           state.correctedWavBlob = null;
-          els.playFixedBtn.disabled = !state.correction || !state.lastWavBlob;
+          state.correctionPromise = null;
+          enableCorrectedPlayback(!!state.correction && !!state.lastWavBlob);
           els.playFixedBtn.textContent = 'Play your corrected voice';
         }
 
@@ -339,6 +345,49 @@ function bindPracticeHandlers () {
 
   els.playBtn.addEventListener('click', () => play(state.lastWavBlob));
   els.playFixedBtn.addEventListener('click', playCorrected);
+  els.saveBtn.addEventListener('click', downloadRecording);
+  els.saveFixedBtn.addEventListener('click', downloadCorrected);
+}
+
+/*
+ * Play and download are enabled and disabled together, through these two
+ * helpers rather than at each call site. There is no state in which one
+ * makes sense without the other, and the failure mode of letting them drift
+ * is a download button handing over the PREVIOUS attempt's audio under this
+ * attempt's filename — silently wrong data, in a feature whose whole point
+ * is to produce files someone will later analyse.
+ */
+function enableRawPlayback (on) {
+  els.playBtn.disabled = !on;
+  els.saveBtn.disabled = !on;
+}
+
+function enableCorrectedPlayback (on) {
+  els.playFixedBtn.disabled = !on;
+  els.saveFixedBtn.disabled = !on;
+}
+
+/** Download the recording exactly as captured. */
+function downloadRecording () {
+  if (!state.lastWavBlob) return;
+  downloadBlob(state.lastWavBlob, recordingFilename(promptSyllables(), 'orig'));
+}
+
+/**
+ * Download the pitch-corrected recording, synthesizing it on the spot if the
+ * learner never pressed play — downloading and listening are independent
+ * things to want, and making one a precondition of the other would be an
+ * artifact of how this is cached, not a real constraint.
+ */
+async function downloadCorrected () {
+  const blob = await ensureCorrectedWav();
+  if (blob) downloadBlob(blob, recordingFilename(promptSyllables(), 'corrected'));
+}
+
+/** The current prompt as {base, tone}, for naming a download. */
+function promptSyllables () {
+  const w = currentWord();
+  return w ? [{ base: w.syllable, tone: w.tone }] : [];
 }
 
 /** Shared one-shot playback; revokes the object URL when it finishes. */
@@ -357,39 +406,60 @@ function play (blob) {
  * Play the learner's own recording with the tone corrected: same voice,
  * same timing, same word, F0 replaced by the target contour drawn on the
  * canvas (docs/single-word/pitch-correct.js has the rules for what is and
- * isn't corrected). Resynthesized lazily on first request and cached, so
- * the cost lands on the learner who asks for it.
+ * isn't corrected).
  */
 async function playCorrected () {
-  if (!state.correction || !state.lastWavBlob) return;
-  if (state.correctedWavBlob) { play(state.correctedWavBlob); return; }
+  const blob = await ensureCorrectedWav();
+  if (blob) play(blob);
+}
+
+/*
+ * The corrected WAV, resynthesized on first need and cached thereafter.
+ *
+ * The in-flight promise is cached too, not just the result: play and
+ * download are two buttons onto the same audio, and a learner who hits both
+ * before the first finishes would otherwise run the Praat pass twice and
+ * race over which result gets stored.
+ */
+function ensureCorrectedWav () {
+  if (state.correctedWavBlob) return Promise.resolve(state.correctedWavBlob);
+  if (state.correctionPromise) return state.correctionPromise;
+  if (!state.correction || !state.lastWavBlob) return Promise.resolve(null);
 
   const btn = els.playFixedBtn;
-  btn.disabled = true;
+  enableCorrectedPlayback(false);
   btn.textContent = 'Correcting…';
-  try {
-    // resynthesizeWithPitch TRANSFERS its buffer to the worker, so this has
-    // to be a fresh copy from the Blob — the original capture buffer was
-    // already detached by the analysis pass.
-    const source = await state.lastWavBlob.arrayBuffer();
-    const wav = await resynthesizeWithPitch(source, state.correction.points);
-    state.correctedWavBlob = new Blob([wav], { type: 'audio/wav' });
-    btn.textContent = 'Play your corrected voice';
-    btn.disabled = false;
-    play(state.correctedWavBlob);
-  } catch (err) {
-    console.error('Pitch correction failed:', err);
-    // Say so rather than leaving a button that silently does nothing; the
-    // next attempt re-enables it.
-    btn.textContent = 'Correction unavailable';
-  }
+
+  state.correctionPromise = (async () => {
+    try {
+      // resynthesizeWithPitch TRANSFERS its buffer to the worker, so this has
+      // to be a fresh copy from the Blob — the original capture buffer was
+      // already detached by the analysis pass.
+      const source = await state.lastWavBlob.arrayBuffer();
+      const wav = await resynthesizeWithPitch(source, state.correction.points);
+      state.correctedWavBlob = new Blob([wav], { type: 'audio/wav' });
+      btn.textContent = 'Play your corrected voice';
+      enableCorrectedPlayback(true);
+      return state.correctedWavBlob;
+    } catch (err) {
+      console.error('Pitch correction failed:', err);
+      // Say so rather than leaving controls that silently do nothing; the
+      // next attempt re-enables them.
+      btn.textContent = 'Correction unavailable';
+      return null;
+    } finally {
+      state.correctionPromise = null;
+    }
+  })();
+  return state.correctionPromise;
 }
 
 /** Drop any corrected audio and the points it would be built from. */
 function clearCorrection () {
   state.correction = null;
   state.correctedWavBlob = null;
-  els.playFixedBtn.disabled = true;
+  state.correctionPromise = null;
+  enableCorrectedPlayback(false);
   els.playFixedBtn.textContent = 'Play your corrected voice';
 }
 
@@ -446,7 +516,7 @@ function refreshWord () {
   els.pinyin.className = 'pinyin t' + w.tone;
   els.gloss.textContent = w.gloss;
   els.feedback.innerHTML = '';
-  els.playBtn.disabled = true;
+  enableRawPlayback(false);
   state.lastWavBlob = null;
   clearCorrection();
   renderTargetOnly(els.canvas, currentTarget(w));
