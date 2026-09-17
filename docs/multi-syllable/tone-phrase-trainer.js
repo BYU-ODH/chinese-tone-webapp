@@ -126,11 +126,12 @@ import { ensureDenoiseReady, denoise } from '../single-word/denoise.js';
 import { SpeakerNormalizer, extractFeatures } from '../single-word/features.js';
 import { CalibrationSession, shouldCalibrate } from '../single-word/calibration.js';
 import {
-  extractUtteranceFeatures, classifyUtterance, commitUtteranceToNormalizer
+  extractUtteranceFeatures, scoreUtterance, commitUtteranceToNormalizer
 } from '../single-word/utterance.js';
 import { renderUtterance } from '../single-word/viz.js';
 import { buildCorrectedPitchPoints } from '../single-word/pitch-correct.js';
-import { loadTargets, getSyllableTargets } from '../single-word/targets.js';
+import { loadTargets } from '../single-word/targets.js';
+import { buildReferences } from '../single-word/tone-match.js';
 import { PHRASES, spokenPinyin, isSandhi, acceptedFor, isOptional } from './phrases.js';
 import {
   VERDICT_LABEL, UNCERTAIN_REASON_TEXT, aggregate, summaryHtml,
@@ -178,6 +179,10 @@ const TEMPLATE = `
   <div class="note" data-el="note"></div>
 
   <div class="syllable-canvases" data-el="canvases"></div>
+  <!-- The band is a SUFFICIENT condition, not a necessary one: staying inside
+       it guarantees a good mark, but a correct production may still leave it
+       briefly (see tone-match.js). The caption promises only what is true. -->
+  <p class="band-legend">Keep your line inside the shaded band and the tone counts as right.</p>
   <div class="syllable-row" data-el="chips"></div>
 
   <div class="controls">
@@ -571,8 +576,10 @@ export class TonePhraseTrainer extends HTMLElement {
       return;
     }
 
-    const verdicts = classifyUtterance(res.syllables, surface, accepted);
-    const targets = phrase.syllables.map((_s, i) => this._targetFor(phrase, i));
+    // One call produces the verdicts AND the matches the canvas is drawn from,
+    // so the picture and the mark come from the same computation by
+    // construction rather than by two code paths agreeing.
+    const { verdicts, matches } = scoreUtterance(res.syllables, surface, accepted);
 
     // Built here, BEFORE the normalizer is committed below, for the same
     // reason the scoring is: the corrected audio must be anchored on the
@@ -588,10 +595,12 @@ export class TonePhraseTrainer extends HTMLElement {
     // there the difference matters: a learner who produced the accepted
     // alternative and was marked correct for it must not then hear their
     // correct production "corrected" into the other form.
-    const correctionTargets = phrase.syllables.map((_s, i) => {
-      const matched = verdicts[i] && verdicts[i].matchedTone;
-      return this._targetFor(phrase, i, matched || surface[i]);
-    });
+    // The matched REFERENCE, not just the matched tone: where a tone carries
+    // more than one accepted realization (T3's dipping third and half-third),
+    // correcting toward the other one would rewrite a learner's correct
+    // production into a different correct production.
+    const correctionTargets = phrase.syllables.map((_s, i) =>
+      (matches[i] && matches[i].ref) || this._refFor(phrase, i));
     this._correction =
       buildCorrectedPitchPoints(analysis, res, correctionTargets, this._normalizer);
     this._correctedWavBlob = null;
@@ -606,7 +615,7 @@ export class TonePhraseTrainer extends HTMLElement {
       (v && v.matchedTone !== undefined && v.matchedTone !== null) ? v.matchedTone : surface[i]);
     commitUtteranceToNormalizer(this._normalizer, res.syllables, producedTones);
 
-    this._paint(phrase, res, verdicts, targets);
+    this._paint(phrase, res, verdicts, matches);
     this._updateStatusRow();
     this._emitAttempt(phrase, res.syllables, verdicts, res, durationSec);
   }
@@ -693,12 +702,10 @@ export class TonePhraseTrainer extends HTMLElement {
     this._els.note.textContent = 'Say it the way you normally would — this one isn\'t marked.';
     this._els.calibProgress.textContent = this._calibration.progressLabel;
 
-    const entry = this._ready ? getSyllableTargets(word.syllable)[word.tone] : null;
     renderUtterance(this._els.canvases, [{
-      tone: word.tone,
-      coefs: entry ? entry.coefs : null,
-      features: null,
-      neutral: false
+      ref: this._ready ? (buildReferences(word.tone)[0] || null) : null,
+      match: null,
+      features: null
     }]);
     this._els.chips.style.setProperty('--syllable-count', '1');
     this._els.chips.innerHTML =
@@ -716,16 +723,19 @@ export class TonePhraseTrainer extends HTMLElement {
   }
 
   /**
-   * Target {tone, coefs} for syllable i, or null for a neutral syllable.
-   * `tone` defaults to the surface tone — the band is the SURFACE tone's
-   * shape, the acoustically correct thing to aim at, not the citation
-   * tone's — and is overridden only by the pitch correction, which aims at
-   * the realization the learner was actually scored against.
+   * The reference to AIM AT for syllable i, before any attempt: the tone's
+   * dominant realization (references come sorted most-common-first). Null for a
+   * neutral syllable, which has no validated target.
+   *
+   * The tone is the SURFACE tone — the acoustically correct thing to aim at,
+   * not the citation tone. After an attempt the canvas swaps to the realization
+   * the learner actually matched, which is what `matches[i].ref` carries: a
+   * learner who produced a perfectly good half-third should be shown the
+   * half-third they hit, not the dipping third they did not aim for.
    */
-  _targetFor (phrase, i, tone = phrase.surfaceTones[i]) {
+  _refFor (phrase, i, tone = phrase.surfaceTones[i]) {
     if (tone === 0) return null;
-    const entry = getSyllableTargets(phrase.syllables[i].base)[tone];
-    return entry ? { tone, coefs: entry.coefs, source: entry.source } : null;
+    return buildReferences(tone)[0] || null;
   }
 
   /** Idle: phrase text, target bands only, chips with no verdict yet. */
@@ -738,15 +748,11 @@ export class TonePhraseTrainer extends HTMLElement {
     this._els.gloss.textContent = phrase.gloss || '';
     this._els.note.textContent = phrase.note || '';
 
-    const entries = phrase.syllables.map((_s, i) => {
-      const t = this._ready ? this._targetFor(phrase, i) : null;
-      return {
-        tone: t ? t.tone : 0,
-        coefs: t ? t.coefs : null,
-        features: null,
-        neutral: phrase.surfaceTones[i] === 0
-      };
-    });
+    const entries = phrase.syllables.map((_s, i) => ({
+      ref: this._ready ? this._refFor(phrase, i) : null,
+      match: null,
+      features: null
+    }));
     renderUtterance(this._els.canvases, entries);
     this._els.chips.style.setProperty('--syllable-count', String(entries.length));
     this._els.chips.innerHTML = phrase.syllables
@@ -755,17 +761,15 @@ export class TonePhraseTrainer extends HTMLElement {
     this._updateStatusRow();
   }
 
-  /** After an attempt: contours over bands, chips carrying verdicts. */
-  _paint (phrase, res, verdicts, targets) {
-    const entries = phrase.syllables.map((_s, i) => {
-      const t = targets[i];
-      return {
-        tone: t ? t.tone : 0,
-        coefs: t ? t.coefs : null,
-        features: res.syllables[i],
-        neutral: phrase.surfaceTones[i] === 0
-      };
-    });
+  /** After an attempt: scored contours over the matched bands, chips with verdicts. */
+  _paint (phrase, res, verdicts, matches) {
+    const entries = phrase.syllables.map((_s, i) => ({
+      // The realization the learner matched, falling back to the aim-point when
+      // there was nothing to match (unvoiced, or neutral).
+      ref: (matches[i] && matches[i].ref) || this._refFor(phrase, i),
+      match: matches[i] || null,
+      features: res.syllables[i]
+    }));
     renderUtterance(this._els.canvases, entries);
 
     this._els.chips.style.setProperty('--syllable-count', String(entries.length));

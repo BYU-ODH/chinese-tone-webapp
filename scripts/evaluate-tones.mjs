@@ -18,6 +18,15 @@
  *   TONE_PERFECT_JOBS=12 node scripts/evaluate-tones.mjs             # full corpus, parallel
  *   TONE_PERFECT_PER_TONE=60 node scripts/evaluate-tones.mjs         # quick strided sample
  *   TONE_CACHE=0 TONE_PERFECT_JOBS=12 node scripts/evaluate-tones.mjs # force re-extraction
+ *   TONE_PERFECT_NORMALIZATION=per-speaker TONE_PERFECT_JOBS=6 node scripts/evaluate-tones.mjs
+ *
+ * That last one builds the CALIBRATED-regime cache: features normalized against
+ * a per-speaker register reference instead of each clip's own median, so c0
+ * carries register and registerTrusted is true. It is a separate cache file and
+ * a DIFFERENT BENCHMARK — its accuracy is not comparable to the rows already in
+ * scripts/results/history.json, every one of which was measured shape-only.
+ * Parallelism caps at the speaker count (6), since a speaker's clips cannot be
+ * split across workers without splitting their reference too.
  *
  * Tone Perfect (Catherine Ryu, Mandarin Tone Perception & Production Team, and
  * Michigan State University Libraries; https://tone.lib.msu.edu/) is licensed for
@@ -46,16 +55,20 @@ async function main () {
   const perTone = resolvePerTone('all');
   const jobs = Math.max(1, parseInt(process.env.TONE_PERFECT_JOBS || '1', 10));
   const useCache = process.env.TONE_CACHE !== '0';
+  const normalization = process.env.TONE_PERFECT_NORMALIZATION || 'per-clip';
 
   console.log('='.repeat(64));
   console.log('Tone Perfect — leave-one-speaker-out (LOSO) benchmark');
   console.log('='.repeat(64));
   console.log(`Sample: ${Number.isFinite(perTone) ? perTone + '/tone' : 'ALL clips'} · ` +
-    `jobs: ${jobs} · cache: ${useCache ? 'on' : 'off'}`);
+    `jobs: ${jobs} · cache: ${useCache ? 'on' : 'off'} · normalization: ${normalization}`);
+  if (normalization !== 'per-clip') {
+    console.log('NOTE: not the shape-only regime the history.json baselines were measured in.');
+  }
 
   const t0 = Date.now();
   const records = await extractCorpusFeatures(DIR, perTone, {
-    jobs, useCache, log: m => console.log(`  ${m}`)
+    jobs, useCache, normalization, log: m => console.log(`  ${m}`)
   });
   const extractMin = (Date.now() - t0) / 60000;
   console.log(`Phase A (features) done in ${extractMin.toFixed(1)} min.\n`);

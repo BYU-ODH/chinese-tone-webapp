@@ -129,6 +129,15 @@ export const COMPONENT_CSS = `
   gap: 0.5rem;
 }
 
+/* ---- band legend ---- */
+
+.band-legend {
+  margin: 0.15rem 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  text-align: center;
+}
+
 /* ---- per-syllable canvases ---- */
 
 .syllable-canvases {

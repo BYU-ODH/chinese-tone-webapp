@@ -24,6 +24,7 @@
 import { prepUtterance, extractSyllableFeatures } from './features.js';
 import { segmentSyllablesGuided } from './segmentation.js';
 import { classify } from './classifier.js';
+import { buildReferences, matchUtterance } from './tone-match.js';
 
 /**
  * @param {object} analysis      Praat analysis struct (see praat-analysis.js)
@@ -117,4 +118,78 @@ export function commitUtteranceToNormalizer (normalizer, syllables, surfaceTones
   syllables.forEach((f, i) => {
     if (f.voiced) normalizer.add(f.referenceFrames, surfaceTones[i]);
   });
+}
+
+/**
+ * Score an utterance the way the learner is shown it: good/close/bad from
+ * tone-match.js's geometry, coaching sentence from classifier.js.
+ *
+ * WHY THE VERDICT MOVED. The verdict now comes from the same object viz.js
+ * draws, so "my line is inside the band" and "I was marked right" cannot
+ * disagree — the failure this whole effort started from. classify() keeps two
+ * jobs it is still better at: writing the diagnostic sentence, and reporting
+ * which tone it thought it heard, which is carried through to the attempt
+ * payload so a disagreement between the two models stays visible in the data
+ * rather than being silently resolved here.
+ *
+ * The diagnostic is borrowed across models, which is a real seam: classify()
+ * writes its hint from its own rules, so it can explain a syllable that geometry
+ * marked down for a slightly different reason. It is the only source of coaching
+ * text in the project, and a wrong-but-relevant hint beats none; worth
+ * revisiting if the two are seen to disagree in practice.
+ *
+ * SANDHI-OPTIONAL POSITIONS fall out for free. Where a position accepts more
+ * than one realization, every accepted tone's references are offered to the
+ * matcher together and the nearest wins, so `matchedTone` is decided by the same
+ * geometry as everything else rather than by a separate rule.
+ *
+ * @param {object[]} syllables   extractSyllableFeatures() structs, in order
+ * @param {number[]} surfaceTones  sandhi-resolved surface tones
+ * @param {number[][]} [acceptedTones]  every acceptable realization per position
+ * @returns {{shift:number, shiftClamped:boolean, verdicts:object[],
+ *   matches:object[], references:Array[]}}
+ */
+export function scoreUtterance (syllables, surfaceTones, acceptedTones = null, opts = {}) {
+  const references = syllables.map((_f, i) => {
+    const options = (acceptedTones && acceptedTones[i]) || [surfaceTones[i]];
+    return options
+      .filter(t => t >= 1 && t <= 4)
+      .flatMap(t => buildReferences(t));
+  });
+
+  const { shift, shiftClamped, matches } = matchUtterance(syllables, references, opts);
+
+  const verdicts = syllables.map((f, i) => {
+    // Neutral tone is shown but never scored — there is no validated T0
+    // acoustic model, and marking a learner right or wrong against an invented
+    // one is the confidently-wrong feedback this pipeline exists to avoid.
+    if (surfaceTones[i] === 0) {
+      return { verdict: 'neutral', matchedTone: 0, diagnostic: null, targetScore: null,
+        bestTone: null, scores: [0, 0, 0, 0] };
+    }
+    if (!f || !f.voiced) {
+      return { verdict: 'uncertain', reason: f && f.reason, matchedTone: null,
+        diagnostic: null, targetScore: 0, bestTone: null, scores: [0, 0, 0, 0] };
+    }
+
+    const m = matches[i];
+    const matchedTone = m ? m.ref.tone : surfaceTones[i];
+    const cls = classify(matchedTone, f);
+    return {
+      verdict: m ? m.verdict : 'uncertain',
+      matchedTone,
+      diagnostic: (m && m.verdict === 'good') ? null : cls.diagnostic,
+      // Geometry's own numbers, for the display and for analysis.
+      rms: m ? m.rms : null,
+      shift: m ? m.shift : null,
+      durationRatio: m ? m.durationRatio : null,
+      durationOk: m ? m.durationOk : null,
+      // classify()'s opinion, kept so model disagreement is visible downstream.
+      targetScore: cls.targetScore,
+      bestTone: cls.bestTone,
+      scores: cls.scores
+    };
+  });
+
+  return { shift, shiftClamped, verdicts, matches, references };
 }

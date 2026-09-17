@@ -28,8 +28,9 @@ import { ensureDenoiseReady, denoise } from './denoise.js';
 import { extractFeatures, SpeakerNormalizer } from './features.js';
 import { buildCorrectedPitchPointsForSyllable } from './pitch-correct.js';
 import { classify } from './classifier.js';
-import { render, renderTargetOnly } from './viz.js';
-import { loadTargets, getSyllableTargets } from './targets.js';
+import { renderSyllable, renderTargetOnly } from './viz.js';
+import { buildReferences, matchSyllable } from './tone-match.js';
+import { loadTargets } from './targets.js';
 import { WORDS } from './words.js';
 import { CalibrationSession, shouldCalibrate } from './calibration.js';
 
@@ -291,9 +292,16 @@ function bindPracticeHandlers () {
         const analysis = await analyzeWav(analysisWav);
         const features = extractFeatures(analysis, state.normalizer);
         const word = currentWord();
-        const target = currentTarget(word);
+        const refs = buildReferences(word.tone);
 
-        render(els.canvas, target, features);
+        // One match drives the mark, the band and the corrected playback, so
+        // none of the three can describe a different comparison than the others.
+        const match = features.voiced ? matchSyllable(features, refs) : null;
+        // Before an attempt the canvas shows the dominant realization; here it
+        // swaps to the one the learner actually matched.
+        const target = (match && match.ref) || refs[0] || null;
+
+        renderSyllable(els.canvas, { ref: target, match, features });
 
         if (!features.voiced) {
           els.feedback.innerHTML =
@@ -330,8 +338,11 @@ function bindPracticeHandlers () {
           return;
         }
 
-        const verdict = classify(word.tone, features);
-        showVerdict(verdict, word.tone);
+        // Geometry decides good/close/bad because geometry is what was drawn;
+        // classify() still supplies the coaching sentence and its own opinion of
+        // which tone it heard.
+        const cls = classify(word.tone, features);
+        showVerdict({ ...cls, verdict: match ? match.verdict : 'uncertain' }, word.tone, match);
       } catch (err) {
         console.error(err);
         els.feedback.innerHTML =
@@ -463,11 +474,19 @@ function clearCorrection () {
   els.playFixedBtn.textContent = 'Play your corrected voice';
 }
 
-function showVerdict (v, targetTone) {
+function showVerdict (v, targetTone, match) {
   const meta = VERDICT_TEXT[v.verdict] || VERDICT_TEXT.uncertain;
   let html = `<span class="badge ${meta.cls}">${meta.label}</span>`;
-  if (v.diagnostic) {
+  if (v.verdict !== 'good' && v.diagnostic) {
     html += `<div class="diagnostic">${escapeHtml(v.diagnostic)}</div>`;
+  }
+  // Duration is reported, never scored — see tone-match.js. Saying it out loud
+  // is what keeps it from being the invisible reason a good-looking contour
+  // came back wrong, which is what the old duration gate was.
+  if (match && match.durationOk === false) {
+    html += `<div class="diagnostic">${match.durationRatio > 1
+      ? 'That was a bit long — try saying it more briskly.'
+      : 'That was very short — give the tone room to move.'}</div>`;
   }
   if (v.bestTone && v.bestTone !== targetTone &&
       v.scores[v.bestTone - 1] > v.targetScore + 0.1) {
@@ -522,11 +541,13 @@ function refreshWord () {
   renderTargetOnly(els.canvas, currentTarget(w));
 }
 
-/** Resolve {tone, coefs} for a WORDS entry from the targets corpus. */
+/**
+ * The reference to aim at before an attempt: the tone's dominant realization.
+ * References come sorted most-common-first from tone-match.js, and they carry
+ * their own register height, so there is nothing to look up per syllable.
+ */
 function currentTarget (word) {
-  const all = getSyllableTargets(word.syllable);
-  const entry = all[word.tone];
-  return { tone: word.tone, coefs: entry.coefs, source: entry.source };
+  return buildReferences(word.tone)[0] || null;
 }
 
 /* ------------------------------------------------------------------ */

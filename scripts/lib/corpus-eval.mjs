@@ -47,6 +47,53 @@ const ROOT = join(__dirname, '..', '..');
  */
 export const FEATURE_CACHE_VERSION = 4;
 
+/*
+ * How F0 is normalized to semitones before the Legendre fit. This is a REGIME,
+ * not a pipeline version, so both live side by side in the cache rather than one
+ * superseding the other — they answer different questions and the app has users
+ * in both:
+ *
+ *   'per-clip'    (default, historical) — each clip gets a fresh
+ *     SpeakerNormalizer, so it is normalized to its own median and c0 is ~0 for
+ *     every tone. This is the SHAPE-ONLY regime an uncalibrated learner is
+ *     scored in, and it is what every number in scripts/results/history.json was
+ *     measured under. Do not change it: the baselines are only comparable
+ *     because it has never moved.
+ *
+ *   'per-speaker' — a two-pass fit (mirroring scripts/build-targets.mjs):
+ *     accumulate a reference per speaker, then re-extract every clip against it,
+ *     so c0 is genuine semitones-re-speaker-mean and registerTrusted is true.
+ *     This is the CALIBRATED regime, and it is the only one in which register
+ *     information survives at all. Required because tone 3 is defined by being
+ *     low rather than by its shape: measured on the per-clip cache, no tolerance
+ *     exists at which geometric scoring both accepts most correct T3s and
+ *     rejects wrong ones (EVALUATION_PLAN.md §0.6).
+ *
+ * The per-speaker cache is a separate file, so adopting it never silently
+ * invalidates a historical benchmark row.
+ */
+export const NORMALIZATION_MODES = ['per-clip', 'per-speaker'];
+
+/*
+ * Clips sampled per speaker to build that speaker's reference, and voiced frames
+ * taken from each.
+ *
+ * Their product is deliberately just under SpeakerNormalizer's DECAY_AT_COUNT
+ * (600), above which it halves every histogram bin. That decay is right for a
+ * live session — it lets the reference track a speaker warming up or shifting
+ * off-mic — and wrong for building a stable corpus reference: feeding it all
+ * ~1,600 of a speaker's clips leaves a reference weighted toward whatever
+ * happened to be added last, and the corpus is sorted alphabetically by
+ * syllable, so "last" means a particular set of vowels. Staying under the
+ * threshold makes the reference order-independent and reproducible.
+ *
+ * 100 clips x 6 frames beats the alternative of 20 clips x 30: the same total
+ * weight, spread across four tones and far more syllables, so vowel-intrinsic
+ * F0 averages out instead of being sampled a few times.
+ */
+const REFERENCE_CLIPS_PER_SPEAKER = 100;
+const REFERENCE_FRAMES_PER_CLIP = 6;
+
 export const SPEAKERS = ['FV1', 'FV2', 'FV3', 'MV1', 'MV2', 'MV3'];
 
 // Filenames are <syllable><tone>_<speaker>_MP3.mp3, e.g. nan2_FV1_MP3.mp3.
@@ -135,11 +182,109 @@ export function analyzeClipRecord (praat, absPath, item) {
   };
 }
 
+/*
+ * Decode one clip and run the Praat analysis, without extracting features.
+ * Split out from analyzeClipRecord because the per-speaker path needs the
+ * analysis TWICE — once to contribute to the speaker reference, once to be
+ * measured against it — and Praat is the expensive part. Returns null if the
+ * clip could not be loaded.
+ */
+export function analyzeClip (praat, absPath) {
+  const buf = readFileSync(absPath);
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const sound = quiet(() => praat.readAudio(ab, '/tmp/clip.mp3'));
+  if (!sound) return null;
+  const analysis = parseAnalysisOutput(quiet(() => praat.run(buildAnalysisScript(sound.id))));
+  quiet(() => praat.removeAll());
+  return analysis;
+}
+
+/** Shape a feature struct into the compact cache record. */
+function toRecord (label, f) {
+  if (!f || !f.voiced) return { ...label, voiced: false, reason: (f && f.reason) || 'no-voice' };
+  return {
+    ...label,
+    voiced: true,
+    registerTrusted: f.registerTrusted,
+    coefs: f.coefs,
+    onset: f.onset,
+    offset: f.offset,
+    vowelCoreFrames: f.vowelCoreFrames,
+    voicedFrameCount: f.voicedFrameCount
+  };
+}
+
+/*
+ * Extract one speaker's records against a reference built from that speaker's
+ * own productions. Two passes over the same analyses, so Praat runs once.
+ *
+ * Pass 1 walks a deterministic stride of the speaker's clips (see
+ * REFERENCE_CLIPS_PER_SPEAKER) and feeds each one's cleaned reference frames
+ * into a single SpeakerNormalizer, labelled with the tone actually produced —
+ * the tone label matters because isRegisterTrusted() gates on tone diversity,
+ * and a reference built from one drilled tone would be centred on that tone's
+ * own range. build-targets.mjs omits the label, which is why the targets it
+ * writes are semitones-re-speaker-MEDIAN rather than re-register.
+ *
+ * Pass 2 re-extracts every clip against that finished reference. Every analysis
+ * is held in memory between the passes: ~1,600 clips of three short float
+ * arrays each, tens of MB, against re-running Praat on all of them.
+ *
+ * @param {object[]} items  this speaker's sample entries, alphabetically sorted
+ * @returns {{records: object[], reference: {frames, rangeSemitones, meanHz, trusted}}}
+ */
+export function extractSpeakerRecords (praat, dir, items) {
+  const held = [];
+  for (const item of items) {
+    const analysis = analyzeClip(praat, join(dir, item.file));
+    held.push({ item, analysis });
+  }
+
+  // Pass 1: the speaker reference, from a stride across the whole sample so it
+  // spans tones and syllables rather than clustering on one region of the list.
+  const norm = new SpeakerNormalizer();
+  const stride = Math.max(1, Math.floor(held.length / REFERENCE_CLIPS_PER_SPEAKER));
+  for (let i = 0; i < held.length; i += stride) {
+    const { item, analysis } = held[i];
+    if (!analysis) continue;
+    const probe = extractFeatures(analysis, new SpeakerNormalizer());
+    if (!probe.voiced || !probe.referenceFrames || probe.referenceFrames.length === 0) continue;
+    const frames = probe.referenceFrames;
+    const take = Math.max(1, Math.ceil(frames.length / REFERENCE_FRAMES_PER_CLIP));
+    const subset = frames.filter((_v, k) => k % take === 0);
+    norm.add(subset, item.tone);
+  }
+
+  // markCalibrated() mirrors what the app does after an explicit calibration
+  // pass: this reference was built from a tone-balanced sample by construction,
+  // which is exactly the condition the 6 ST range bar stands in for.
+  norm.markCalibrated();
+
+  // Pass 2: measure every clip against the finished reference.
+  const records = held.map(({ item, analysis }) => {
+    const label = { syllable: item.syllable, tone: item.tone, speaker: item.speaker };
+    if (!analysis) return { ...label, voiced: false, reason: 'load-failed' };
+    return toRecord(label, extractFeatures(analysis, norm));
+  });
+
+  return {
+    records,
+    reference: {
+      frames: norm.count,
+      rangeSemitones: norm.rangeSemitones(),
+      meanHz: norm.meanHz(),
+      trusted: norm.isRegisterTrusted()
+    }
+  };
+}
+
 /* ------------------------------------------------- feature extraction (A) */
 
-function cachePath (dir, perTone) {
+function cachePath (dir, perTone, normalization = 'per-clip') {
   const tag = Number.isFinite(perTone) ? String(perTone) : 'all';
-  return join(ROOT, '.tone-cache', `features-${tag}-v${FEATURE_CACHE_VERSION}.json`);
+  // 'per-clip' keeps the historical filename so existing caches still hit.
+  const suffix = normalization === 'per-speaker' ? '-speaker' : '';
+  return join(ROOT, '.tone-cache', `features-${tag}-v${FEATURE_CACHE_VERSION}${suffix}.json`);
 }
 
 /*
@@ -150,58 +295,111 @@ function cachePath (dir, perTone) {
  *   useCache — read/write the on-disk cache (default true)
  * `log` is an optional progress callback (message => void).
  */
-export async function extractCorpusFeatures (dir, perTone, { jobs = 1, useCache = true, log = () => {} } = {}) {
-  const path = cachePath(dir, perTone);
+export async function extractCorpusFeatures (dir, perTone, {
+  jobs = 1, useCache = true, log = () => {}, normalization = 'per-clip'
+} = {}) {
+  if (!NORMALIZATION_MODES.includes(normalization)) {
+    throw new Error(`unknown normalization "${normalization}" (expected ${NORMALIZATION_MODES.join(' | ')})`);
+  }
+  const path = cachePath(dir, perTone, normalization);
   if (useCache && existsSync(path)) {
     const cached = JSON.parse(readFileSync(path, 'utf8'));
-    log(`cache hit: ${cached.records.length} records (v${FEATURE_CACHE_VERSION}) from ${path}`);
+    log(`cache hit: ${cached.records.length} records (v${FEATURE_CACHE_VERSION}, ${normalization}) from ${path}`);
     return cached.records;
   }
 
   const sample = sampleTonePerfect(dir, perTone);
-  log(`extracting features for ${sample.length} clips` + (jobs > 1 ? ` across ${jobs} workers…` : '…'));
+  log(`extracting features for ${sample.length} clips (${normalization})` +
+    (jobs > 1 ? ` across up to ${jobs} workers…` : '…'));
   const records = jobs > 1
-    ? await extractParallel(dir, perTone, jobs, log)
-    : await extractSerial(dir, sample, log);
+    ? await extractParallel(dir, perTone, jobs, log, normalization)
+    : await extractSerial(dir, sample, log, normalization);
 
   if (useCache) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify({
       version: FEATURE_CACHE_VERSION, dir, perTone: Number.isFinite(perTone) ? perTone : 'all',
-      generatedAt: new Date().toISOString(), records
+      normalization, generatedAt: new Date().toISOString(), records
     }));
     log(`cached ${records.length} records to ${path}`);
   }
   return records;
 }
 
-async function extractSerial (dir, sample, log) {
+/** Group a sample by speaker, preserving each speaker's alphabetical order. */
+export function bySpeaker (sample) {
+  const out = new Map();
+  for (const item of sample) {
+    if (!out.has(item.speaker)) out.set(item.speaker, []);
+    out.get(item.speaker).push(item);
+  }
+  return out;
+}
+
+async function extractSerial (dir, sample, log, normalization) {
   const { createPraatWasm } = await import(DEFAULT_PRAAT_WASM);
   const praat = await createPraatWasm();
+  if (normalization === 'per-speaker') {
+    const records = [];
+    for (const [speaker, items] of bySpeaker(sample)) {
+      const { records: rs, reference } = extractSpeakerRecords(praat, dir, items);
+      log(`  ${speaker}: ${rs.length} clips, reference ${reference.frames} frames, ` +
+        `range ${reference.rangeSemitones.toFixed(1)} ST, mean ${reference.meanHz?.toFixed(1)} Hz, ` +
+        `trusted ${reference.trusted}`);
+      records.push(...rs);
+    }
+    log(`extracted ${records.length} records (serial, per-speaker)`);
+    return records;
+  }
   const records = [];
   for (const item of sample) records.push(analyzeClipRecord(praat, join(dir, item.file), item));
   log(`extracted ${records.length} records (serial)`);
   return records;
 }
 
-// Fan the deterministic sample out across `jobs` forked workers. Each worker
-// computes the same sample, takes its (index % jobs) slice, and writes its
-// records to a temp file; the parent concatenates them.
-async function extractParallel (dir, perTone, jobs, log) {
+/*
+ * Fan the deterministic sample out across forked workers, each writing its
+ * records to a temp file for the parent to concatenate.
+ *
+ * How the work is split depends on the regime, and it has to:
+ *   'per-clip'    — stride the sample, (index % jobs). Clips are independent,
+ *                   so any split gives identical results.
+ *   'per-speaker' — split by SPEAKER, because a clip's features depend on every
+ *                   other clip by the same speaker. Striding would hand each
+ *                   worker a fraction of each speaker and produce six partial
+ *                   references instead of one. This caps useful parallelism at
+ *                   the speaker count (6 for Tone Perfect), so `jobs` is an
+ *                   upper bound here rather than an exact worker count.
+ */
+async function extractParallel (dir, perTone, jobs, log, normalization) {
   const { mkdtempSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const worker = join(__dirname, 'extract-worker.mjs');
   const outDir = mkdtempSync(join(tmpdir(), 'tp-feat-'));
   let done = 0;
 
-  const runs = Array.from({ length: jobs }, (_, i) => {
+  // One shard descriptor per worker: either a stride slot or a speaker set.
+  let shards;
+  if (normalization === 'per-speaker') {
+    const speakers = [...bySpeaker(sampleTonePerfect(dir, perTone)).keys()].sort();
+    const n = Math.min(jobs, speakers.length);
+    shards = Array.from({ length: n }, (_, i) =>
+      ({ SHARD_SPEAKERS: speakers.filter((_s, k) => k % n === i).join(',') }));
+  } else {
+    shards = Array.from({ length: jobs }, (_, i) =>
+      ({ SHARD_INDEX: String(i), SHARD_COUNT: String(jobs) }));
+  }
+
+  const runs = shards.map((shard, i) => {
     const out = join(outDir, `shard-${i}.json`);
     const child = fork(worker, [], {
       env: {
         ...process.env,
-        SHARD_INDEX: String(i), SHARD_COUNT: String(jobs), SHARD_OUT: out,
+        ...shard,
+        SHARD_OUT: out,
         TONE_PERFECT_DIR: dir,
-        TONE_PERFECT_PER_TONE: Number.isFinite(perTone) ? String(perTone) : 'all'
+        TONE_PERFECT_PER_TONE: Number.isFinite(perTone) ? String(perTone) : 'all',
+        NORMALIZATION: normalization
       },
       // Discard worker stdout (Praat echoes its Info window); keep stderr for crashes.
       stdio: ['ignore', 'ignore', 'inherit', 'ipc']
@@ -209,7 +407,7 @@ async function extractParallel (dir, perTone, jobs, log) {
     return new Promise((resolve, reject) => {
       child.on('exit', (code) => {
         if (code !== 0) return reject(new Error(`extract worker ${i} exited with code ${code}`));
-        log(`  worker ${++done}/${jobs} finished`);
+        log(`  worker ${++done}/${shards.length} finished`);
         resolve(JSON.parse(readFileSync(out, 'utf8')));
       });
       child.on('error', reject);

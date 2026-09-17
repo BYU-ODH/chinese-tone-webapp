@@ -140,6 +140,13 @@ main {
   display: block;
 }
 
+.band-legend {
+  margin: -0.6rem 0 0.9rem;
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  text-align: center;
+}
+
 /* ---- controls ---- */
 
 .controls {
