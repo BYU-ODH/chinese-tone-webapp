@@ -337,11 +337,38 @@ try {
   console.error(`  TONE_PERFECT_NORMALIZATION=${NORMALIZATION} TONE_PERFECT_JOBS=6 node scripts/evaluate-tones.mjs`);
   process.exit(1);
 }
-const recs = parsed.records.filter(r => r.voiced);
+let recs = parsed.records.filter(r => r.voiced);
+
+/*
+ * RANGE_NORMALIZE=1 rescales every speaker to one common pitch range before
+ * anything is fitted: coefs × (REFERENCE_RANGE / speaker range). Offsetting by
+ * the register midpoint (what per-speaker normalization already does) leaves a
+ * wide-ranged speaker's T1 sitting high above the pooled band and their T4
+ * falling further than it; measured across these six natives the range spans
+ * 7.7–12.5 ST and T1's median height 2.1–5.2 ST. Scaling is linear in
+ * semitones re the midpoint, so it applies to the cached coefficients exactly
+ * — no re-extraction. Ranges come from scripts/speaker-ranges.mjs, in the same
+ * units SpeakerNormalizer.rangeSemitones() reports live.
+ */
+const RANGE_NORMALIZE = process.env.RANGE_NORMALIZE === '1';
+let REFERENCE_RANGE = null;
+if (RANGE_NORMALIZE) {
+  if (!FIT_C0) throw new Error('RANGE_NORMALIZE needs the per-speaker regime');
+  const rangesPath = join(ROOT, '.tone-cache', `speaker-ranges-v${FEATURE_CACHE_VERSION}.json`);
+  const { ranges } = JSON.parse(readFileSync(rangesPath, 'utf8'));
+  const rs = SPEAKERS.map(s => ranges[s].rangeSemitones).sort((a, b) => a - b);
+  REFERENCE_RANGE = (rs[2] + rs[3]) / 2;
+  recs = recs.map(r => {
+    const k = REFERENCE_RANGE / ranges[r.speaker].rangeSemitones;
+    return { ...r, coefs: r.coefs.map(c => c * k) };
+  });
+}
+
 console.log(`cache: ${cache}`);
 console.log(`  ${recs.length} voiced clips, ${parsed.perTone === 'all' ? 'full corpus' : parsed.perTone + '/tone'}, ` +
   `normalization ${parsed.normalization || 'per-clip'}`);
 console.log(`  fitting ${FIT_C0 ? 'c0..c3 (register carried by the modes)' : 'c1..c3 (shape only; c0 anchored by the caller)'}`);
+if (RANGE_NORMALIZE) console.log(`  range-normalized to ${REFERENCE_RANGE.toFixed(2)} ST (median speaker)`);
 console.log(`  vertical slack ±${FIT_C0 ? MAX_SHIFT.toFixed(1) + ' ST' : '\u221e (register is meaningless in this regime)'}\n`);
 
 /* Slack used for every comparison below. Unbounded in the shape-only regime,
@@ -588,7 +615,9 @@ console.log(`// LOSO identity by nearest shipped shape: ${(100 * correctPruned /
 console.log(`// Normalization: ${NORMALIZATION}. ${FIT_C0
   ? 'coefs are c0..c3 in semitones re speaker register — references need no external anchor.'
   : 'coefs[0] is 0: shape only, the caller must anchor the height.'}`);
+if (RANGE_NORMALIZE) console.log(`// Range-normalized: coefs are for a speaker whose P90−P10 range is ${REFERENCE_RANGE.toFixed(2)} ST.`);
 console.log('export const MODES_CARRY_REGISTER = ' + String(FIT_C0) + ';');
+if (RANGE_NORMALIZE) console.log(`export const REFERENCE_RANGE_ST = ${+REFERENCE_RANGE.toFixed(2)};`);
 console.log('export const TONE_MODES = {');
 for (const tone of [1, 2, 3, 4]) {
   console.log(`  ${tone}: {`);

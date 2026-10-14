@@ -240,12 +240,56 @@ export function extractSpeakerRecords (praat, dir, items) {
     held.push({ item, analysis });
   }
 
-  // Pass 1: the speaker reference, from a stride across the whole sample so it
-  // spans tones and syllables rather than clustering on one region of the list.
+  const norm = buildSpeakerNormalizer(referenceIndices(held.length).map(i => held[i]));
+
+  // Pass 2: measure every clip against the finished reference.
+  const records = held.map(({ item, analysis }) => {
+    const label = { syllable: item.syllable, tone: item.tone, speaker: item.speaker };
+    if (!analysis) return { ...label, voiced: false, reason: 'load-failed' };
+    return toRecord(label, extractFeatures(analysis, norm));
+  });
+
+  return { records, reference: describeReference(norm) };
+}
+
+/*
+ * Pass 1 alone: build one speaker's reference without analyzing the clips it
+ * does not sample. Same stride and same normalizer as extractSpeakerRecords, so
+ * the reference is identical — only ~100 Praat runs per speaker instead of
+ * ~1,600, which is what makes it cheap to recover the per-speaker range the
+ * feature cache does not store (scripts/speaker-ranges.mjs).
+ */
+export function extractSpeakerReference (praat, dir, items) {
+  const held = referenceIndices(items.length).map(i => ({
+    item: items[i],
+    analysis: analyzeClip(praat, join(dir, items[i].file))
+  }));
+  return describeReference(buildSpeakerNormalizer(held));
+}
+
+/* Indices of the clips that build a speaker reference: a stride across the
+ * whole sample so it spans tones and syllables rather than clustering on one
+ * region of the alphabetically-sorted list. */
+function referenceIndices (n) {
+  const stride = Math.max(1, Math.floor(n / REFERENCE_CLIPS_PER_SPEAKER));
+  const out = [];
+  for (let i = 0; i < n; i += stride) out.push(i);
+  return out;
+}
+
+function describeReference (norm) {
+  return {
+    frames: norm.count,
+    rangeSemitones: norm.rangeSemitones(),
+    meanHz: norm.meanHz(),
+    trusted: norm.isRegisterTrusted()
+  };
+}
+
+/* Feed each sampled clip's cleaned reference frames into one normalizer. */
+function buildSpeakerNormalizer (sampled) {
   const norm = new SpeakerNormalizer();
-  const stride = Math.max(1, Math.floor(held.length / REFERENCE_CLIPS_PER_SPEAKER));
-  for (let i = 0; i < held.length; i += stride) {
-    const { item, analysis } = held[i];
+  for (const { item, analysis } of sampled) {
     if (!analysis) continue;
     const probe = extractFeatures(analysis, new SpeakerNormalizer());
     if (!probe.voiced || !probe.referenceFrames || probe.referenceFrames.length === 0) continue;
@@ -259,23 +303,7 @@ export function extractSpeakerRecords (praat, dir, items) {
   // pass: this reference was built from a tone-balanced sample by construction,
   // which is exactly the condition the 6 ST range bar stands in for.
   norm.markCalibrated();
-
-  // Pass 2: measure every clip against the finished reference.
-  const records = held.map(({ item, analysis }) => {
-    const label = { syllable: item.syllable, tone: item.tone, speaker: item.speaker };
-    if (!analysis) return { ...label, voiced: false, reason: 'load-failed' };
-    return toRecord(label, extractFeatures(analysis, norm));
-  });
-
-  return {
-    records,
-    reference: {
-      frames: norm.count,
-      rangeSemitones: norm.rangeSemitones(),
-      meanHz: norm.meanHz(),
-      trusted: norm.isRegisterTrusted()
-    }
-  };
+  return norm;
 }
 
 /* ------------------------------------------------- feature extraction (A) */
