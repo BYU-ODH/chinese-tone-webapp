@@ -245,9 +245,8 @@ export class TonePhraseTrainer extends HTMLElement {
 
   connectedCallback () {
     if (!this._built) this._build();
-    // Focusable so the scoped spacebar hold below can reach it. Not forced
-    // if the host already set its own tabindex.
-    if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '0');
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
     this._render();
     if (!this.hasAttribute('defer')) this.load();
   }
@@ -259,6 +258,8 @@ export class TonePhraseTrainer extends HTMLElement {
    * single-word app never calls dispose(); here it is not optional.)
    */
   disconnectedCallback () {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
     cancelAnimationFrame(this._meterRaf);
     this._meterRaf = 0;
     if (this._recorder) {
@@ -418,14 +419,15 @@ export class TonePhraseTrainer extends HTMLElement {
 
   /*
    * Push-and-hold, via Pointer Events (one handler set covers mouse, touch
-   * and stylus) plus a spacebar hold.
+   * and stylus) plus a spacebar hold. Left/Right arrows act like the nav
+   * buttons.
    *
-   * The keyboard listener is bound to THIS ELEMENT, not to window as the
-   * standalone single-word app does. In an embedded context a window-level
-   * space handler would hijack the spacebar for the entire host page; scoped
-   * here it only fires when focus is inside the component. preventDefault on
-   * keydown also suppresses the synthetic click a focused button would
-   * otherwise receive on keyup, which would double-fire the gesture.
+   * The keyboard listeners go on WINDOW (attached in connectedCallback,
+   * removed in disconnectedCallback) so Space records no matter what has
+   * focus. They stand down while the user is typing in a form field. Space
+   * is swallowed on keydown AND keyup even when recording is unavailable, so
+   * it never "clicks" a focused button (which would double-fire the gesture
+   * or trigger an unrelated control).
    */
   _bindHold () {
     const btn = this._els.record;
@@ -462,22 +464,38 @@ export class TonePhraseTrainer extends HTMLElement {
     btn.addEventListener('pointercancel', pointerStop);
     btn.addEventListener('pointerleave', pointerStop);
 
-    this.addEventListener('keydown', (e) => {
-      if (e.code !== 'Space' || e.repeat || keyActive) return;
-      if (btn.disabled) return;
+    const isEditableTarget = () => {
+      const a = document.activeElement;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+    };
+
+    this._onKeyDown = (e) => {
+      if (isEditableTarget()) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const nav = e.key === 'ArrowLeft' ? this._els.prev : this._els.next;
+        // Hidden nav (hide-nav) means the host owns navigation.
+        if (nav.disabled || nav.classList.contains('hidden')) return;
+        e.preventDefault();
+        nav.click();
+        return;
+      }
+      if (e.code !== 'Space') return;
       e.preventDefault();
+      if (e.repeat || keyActive || btn.disabled) return;
       keyActive = true;
       btn.classList.add('recording');
       begin(() => { keyActive = false; });
-    });
+    };
 
-    this.addEventListener('keyup', async (e) => {
-      if (e.code !== 'Space' || !keyActive) return;
+    this._onKeyUp = async (e) => {
+      if (e.code !== 'Space' || isEditableTarget()) return;
       e.preventDefault();
+      if (!keyActive) return;
       keyActive = false;
       btn.classList.remove('recording');
       await this._stopRecording();
-    });
+    };
   }
 
   /* ---------------- recording ---------------- */

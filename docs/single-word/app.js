@@ -207,7 +207,8 @@ function bindHold (button, onStart, onStop) {
 /**
  * Window-level Space-to-record. Acts on the supplied button regardless
  * of focus, but only when it's enabled and visible. Skips if the user
- * is typing in a form field.
+ * is typing in a form field. Space is swallowed even when recording is
+ * unavailable, so it never "clicks" whatever button happens to have focus.
  */
 function bindSpacebarHold (button, onStart, onStop) {
   let active = false;
@@ -220,10 +221,11 @@ function bindSpacebarHold (button, onStart, onStop) {
   };
 
   window.addEventListener('keydown', async (e) => {
-    if (e.code !== 'Space' || e.repeat || active) return;
-    if (button.disabled || isEditableTarget()) return;
-    if (button.offsetParent === null) return;   // hidden / not laid out
+    if (e.code !== 'Space' || isEditableTarget()) return;
     e.preventDefault();
+    if (e.repeat || active) return;
+    if (button.disabled) return;
+    if (button.offsetParent === null) return;   // hidden / not laid out
     active = true;
     button.classList.add('recording');
     try { await onStart(); }
@@ -235,8 +237,9 @@ function bindSpacebarHold (button, onStart, onStop) {
   });
 
   window.addEventListener('keyup', async (e) => {
-    if (e.code !== 'Space' || !active) return;
+    if (e.code !== 'Space' || isEditableTarget()) return;
     e.preventDefault();
+    if (!active) return;
     active = false;
     button.classList.remove('recording');
     try { await onStop(); }
@@ -513,6 +516,21 @@ function bindNavHandlers () {
   els.nextWord.addEventListener('click', () => {
     state.wordIdx = (state.wordIdx + 1) % WORDS.length;
     refreshWord();
+  });
+
+  // Left/Right arrows act like the nav buttons, from anywhere on the page.
+  // Going through click() inherits the buttons' disabled state (e.g. while
+  // a recording is being analyzed).
+  window.addEventListener('keydown', (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const btn = e.key === 'ArrowLeft' ? els.prevWord
+      : e.key === 'ArrowRight' ? els.nextWord : null;
+    if (!btn) return;
+    const a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return;
+    if (btn.disabled || btn.offsetParent === null) return;
+    e.preventDefault();
+    btn.click();
   });
 }
 
